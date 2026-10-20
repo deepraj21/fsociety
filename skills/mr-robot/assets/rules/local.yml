@@ -1,0 +1,224 @@
+# mr-robot offline fallback rule pack (semgrep/opengrep-compatible YAML).
+# Used when the online registry config (p/security-audit) is unavailable — guarantees
+# the skill still finds high-value vulnerability classes with zero network + zero cost.
+rules:
+  # ---------- Injection / code exec (OWASP A05:2025) ----------
+  - id: mr-robot-py-eval-user-input
+    languages: [python]
+    severity: WARNING
+    message: >-
+      eval() on a non-literal expression — code injection risk (CWE-95/CWE-94).
+      User-controlled input reaching eval is remote code execution.
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-95"]
+      impact: high
+    pattern-either:
+      - pattern: eval($X)
+      - pattern: eval($X, $G)
+
+  - id: mr-robot-py-exec
+    languages: [python]
+    severity: WARNING
+    message: exec() executes dynamic code — code injection risk (CWE-94).
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-94"]
+      impact: high
+    pattern-either:
+      - pattern: exec($X)
+      - pattern: exec($X, $G)
+
+  - id: mr-robot-py-os-system
+    languages: [python]
+    severity: WARNING
+    message: os.system() spawns a shell — OS command injection risk (CWE-78) if input is influenced by users.
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-78"]
+      impact: high
+    pattern: os.system($CMD)
+
+  - id: mr-robot-py-subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: subprocess with shell=True — OS command injection risk (CWE-78).
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-78"]
+      impact: high
+    pattern-either:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+
+  - id: mr-robot-py-sqli-concat-execute
+    languages: [python]
+    severity: ERROR
+    message: SQL built with string concatenation passed to execute() — SQL injection risk (CWE-89).
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-89"]
+      impact: high
+    pattern-either:
+      - pattern: $CONN.execute($Q + $V)
+      - pattern: $CURSOR.execute($Q + $V)
+
+  # ---------- Deserialization (OWASP A05/A08:2025) ----------
+  - id: mr-robot-py-pickle-loads
+    languages: [python]
+    severity: ERROR
+    message: pickle.loads() on data that may be untrusted — insecure deserialization, can lead to RCE (CWE-502).
+    metadata:
+      owasp: ["A08:2025-Software-or-Data-Integrity-Failures"]
+      cwe: ["CWE-502"]
+      impact: high
+    pattern-either:
+      - pattern: pickle.loads($X)
+      - pattern: pickle.load($F)
+
+  - id: mr-robot-py-yaml-unsafe-load
+    languages: [python]
+    severity: WARNING
+    message: yaml.load() without SafeLoader can instantiate arbitrary Python objects (CWE-502). Use yaml.safe_load().
+    metadata:
+      owasp: ["A08:2025-Software-or-Data-Integrity-Failures"]
+      cwe: ["CWE-502"]
+      impact: medium
+    pattern: yaml.load($X)
+
+  # ---------- Crypto failures (OWASP A04:2025) ----------
+  - id: mr-robot-py-weak-hash
+    languages: [python]
+    severity: WARNING
+    message: Weak hash algorithm (MD5/SHA1) — broken for passwords/signatures (CWE-327/CWE-916).
+    metadata:
+      owasp: ["A04:2025-Cryptographic-Failures"]
+      cwe: ["CWE-327"]
+      impact: medium
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+
+  - id: mr-robot-py-requests-verify-false
+    languages: [python]
+    severity: ERROR
+    message: TLS certificate verification disabled — enables MITM (CWE-295).
+    metadata:
+      owasp: ["A04:2025-Cryptographic-Failures"]
+      cwe: ["CWE-295"]
+      impact: medium
+    pattern-either:
+      - pattern: requests.get(..., verify=False, ...)
+      - pattern: requests.post(..., verify=False, ...)
+      - pattern: requests.request(..., verify=False, ...)
+
+  - id: mr-robot-py-insecure-tempfile
+    languages: [python]
+    severity: WARNING
+    message: tempfile.mktemp() is race-prone (CWE-377). Use mkstemp()/TemporaryDirectory.
+    metadata:
+      owasp: ["A06:2025-Insecure-Design"]
+      cwe: ["CWE-377"]
+      impact: low
+    pattern: tempfile.mktemp(...)
+
+  # ---------- Injection / XSS in JS (OWASP A05:2025) ----------
+  - id: mr-robot-js-eval
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: eval() on dynamic code — code injection (CWE-95).
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-95"]
+      impact: high
+    pattern-either:
+      - pattern: eval($X)
+      - pattern: window.eval($X)
+
+  - id: mr-robot-js-child-process-exec
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: child_process.exec() runs a shell — command injection (CWE-78) if input is user-influenced.
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-78"]
+      impact: high
+    pattern-either:
+      - pattern: child_process.exec($CMD)
+      - pattern: require("child_process").exec($CMD)
+
+  - id: mr-robot-js-innerhtml-assignment
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Assigning dynamic data to innerHTML — DOM XSS risk (CWE-79). Use textContent/sanitization.
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-79"]
+      impact: medium
+    pattern: $EL.innerHTML = $X
+
+  - id: mr-robot-js-document-write
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: document.write() with dynamic content — XSS risk (CWE-79).
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-79"]
+      impact: medium
+    pattern: document.write($X)
+
+  - id: mr-robot-js-weak-hash
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Weak hash (MD5/SHA1) via crypto.createHash (CWE-327).
+    metadata:
+      owasp: ["A04:2025-Cryptographic-Failures"]
+      cwe: ["CWE-327"]
+      impact: medium
+    pattern-either:
+      - pattern: crypto.createHash("md5")
+      - pattern: crypto.createHash("sha1")
+
+  - id: mr-robot-js-dangerouslysetinnerhtml
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: dangerouslySetInnerHTML — confirm content is sanitized or it is stored XSS (CWE-79).
+    metadata:
+      owasp: ["A05:2025-Injection"]
+      cwe: ["CWE-79"]
+      impact: medium
+    pattern-regex: dangerouslySetInnerHTML
+
+  # ---------- Secrets (OWASP A02/A07:2025) ----------
+  - id: mr-robot-secret-aws-access-key
+    languages: [generic]
+    severity: ERROR
+    message: Possible hardcoded AWS access key id (CWE-798). Rotate and move to a secret manager.
+    metadata:
+      owasp: ["A07:2025-Authentication-Failures"]
+      cwe: ["CWE-798"]
+      impact: high
+    pattern-regex: AKIA[0-9A-Z]{16}
+
+  - id: mr-robot-secret-private-key-block
+    languages: [generic]
+    severity: ERROR
+    message: Private key material committed to source (CWE-321/CWE-798). Rotate the key immediately.
+    metadata:
+      owasp: ["A04:2025-Cryptographic-Failures"]
+      cwe: ["CWE-321"]
+      impact: critical
+    pattern-regex: -----(BEGIN|END) [A-Z ]*PRIVATE KEY-----
+
+  # ---------- Misconfiguration (OWASP A02:2025) ----------
+  - id: mr-robot-yaml-privileged-container
+    languages: [yaml]
+    severity: WARNING
+    message: Container runs privileged — host-equivalent access if compromised (CWE-250).
+    metadata:
+      owasp: ["A02:2025-Security-Misconfiguration"]
+      cwe: ["CWE-250"]
+      impact: high
+    pattern: "privileged: true"

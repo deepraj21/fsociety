@@ -1,0 +1,18 @@
+# gitleaks config for mr-robot: default ruleset + path allowlist.
+# [extend] useDefault = true keeps gitleaks' built-in rules; the allowlist stops the
+# scanner from flagging its own run artifacts and vendored/generated trees.
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''\.mr-robot/''',
+  '''node_modules/''',
+  '''vendor/''',
+  '''\.venv/''',
+  '''(^|/)venv/''',
+  '''(^|/)dist/''',
+  '''(^|/)build/''',
+  '''(^|/)target/''',
+  '''\.git/''',
+]
