@@ -710,6 +710,53 @@ if os.path.exists(sp):
             scanners.append({"name": parts[0], "status": parts[1], "detail": parts[2] if len(parts) > 2 else ""})
 scanners.sort(key=lambda s: s["name"])   # parallel runs write TSV out of order
 
+# --- KEV enrichment (CISA known-exploited catalog — cached, offline-safe) ----------
+# Only catalog metadata is downloaded (like nuclei templates): never target data.
+# MR_ROBOT_NO_NETWORK=1 skips the fetch; a stale cache is still used.
+KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+kev_set = None
+kev_info = {"source": KEV_URL, "status": "unavailable"}
+try:
+    import time as _time
+    _cache_dir = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "mr-robot")
+    _cache = os.path.join(_cache_dir, "kev.json")
+    _fresh = os.path.exists(_cache) and (_time.time() - os.path.getmtime(_cache)) < 7 * 86400
+    _fetched = False
+    if not _fresh and os.environ.get("MR_ROBOT_NO_NETWORK") != "1":
+        _raw = None
+        try:  # urllib first...
+            import urllib.request as _urlreq
+            _req = _urlreq.Request(KEV_URL, headers={"User-Agent": "mr-robot-skill"})
+            _raw = _urlreq.urlopen(_req, timeout=10).read()
+        except Exception:
+            # ...then curl: macOS system Pythons often lack a CA bundle while
+            # curl uses the OS trust store. Catalog metadata only — never target data.
+            try:
+                import subprocess as _sp, shutil as _sh
+                if _sh.which("curl"):
+                    _p = _sp.run(["curl", "-fsSL", "--max-time", "15", "-A", "mr-robot-skill", KEV_URL],
+                                 capture_output=True, timeout=20)
+                    _raw = _p.stdout or None
+            except Exception:
+                _raw = None
+        if _raw:
+            try:
+                json.loads(_raw)                     # validate before caching
+                os.makedirs(_cache_dir, exist_ok=True)
+                with open(_cache, "wb") as _fh: _fh.write(_raw)
+                _fetched, _fresh = True, True
+            except Exception:
+                pass                                 # corrupt body → keep stale cache
+    if os.path.exists(_cache):
+        _cat = json.load(open(_cache))
+        kev_set = {v["cveID"] for v in _cat.get("vulnerabilities", []) if v.get("cveID")}
+        kev_info = {"source": KEV_URL,
+                    "status": "fetched" if _fetched else ("cache" if _fresh else "stale-cache"),
+                    "entries": len(kev_set),
+                    "catalog_version": _cat.get("catalogVersion")}
+except Exception as _e:
+    kev_info["error"] = str(_e)[:160]
+
 # --- dedupe + finalize --------------------------------------------------------------
 seen, final = set(), []
 for f in findings:
@@ -721,6 +768,15 @@ for f in findings:
 order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 final.sort(key=lambda f: (order.get(f["severity"], 5), f["source_tool"]))
 
+# CVE findings → kev: true/false (only CVE-bearing findings get the field;
+# only when the catalog loaded)
+if kev_set:
+    _cve_re = re.compile(r"CVE-\d{4}-\d{4,7}", re.I)
+    for f in final:
+        _m = _cve_re.search(f.get("title") or "") or _cve_re.search(f.get("evidence") or "")
+        if _m:
+            f["kev"] = _m.group(0).upper() in kev_set
+
 doc = {
     "schema": "mr-robot-findings-v1",
     "target": target,
@@ -729,6 +785,7 @@ doc = {
     "coverage": {
         "nuclei_template_tags": stack_tags or None,
         "live_url": live_url or None,
+        "kev_catalog": kev_info,
     },
     "scanners": scanners,
     "counts": {s: sum(1 for f in final if f["severity"] == s) for s in SEVS},
@@ -740,6 +797,11 @@ print(f"[merge] {len(final)} candidate findings → {merged_path}")
 for s in ("critical", "high", "medium", "low", "info"):
     c = doc["counts"][s]
     if c: print(f"          {s:9s}: {c}")
+if kev_set:
+    _nk = sum(1 for f in final if f.get("kev"))
+    print(f"          kev      : {_nk} finding(s) in CISA KEV catalog ({kev_info['status']})")
+elif kev_info.get("status") == "unavailable":
+    print("          kev      : catalog unavailable (offline) — findings not annotated")
 PYEOF
 
 rc=$?
@@ -752,5 +814,5 @@ echo
 echo "[scan] done."
 echo "  findings : $MERGED"
 echo "  raw logs : $LOG"
-echo "  next     : run scripts/score.mjs $MERGED  (or hand findings.json to the agent for verification)"
+echo "  next     : run scripts/score.mjs $MERGED  (verdict · --ci for gates) · scripts/sarif.mjs $MERGED (SARIF for CI upload)"
 exit 0

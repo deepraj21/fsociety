@@ -1,6 +1,6 @@
 ---
 name: mr-robot
-description: Offensive penetration-testing agent skill for a product you own — takes the app through a real red-team engagement — recon, live endpoint enumeration and fuzzing, vulnerability hunting, exploitation, post-exploitation impact proof, then a GO / NO-GO verdict, and retests fixes to prove remediation. Uses only free local open-source tools (ffuf, feroxbuster, nuclei, sqlmap, opengrep, trivy, gitleaks) and chains findings into attacker kill chains showing how the product would be taken down — covering injection, auth and gateway bypass, SSRF, backdoors, prompt injection, races, GraphQL, WebSocket, OAuth/OIDC, and HTTP protocol attacks. Use when the user says /mr-robot, "take down my product", pentest, penetration test, red team, hack my app, find critical vulnerabilities, hunt for backdoors or prompt injection, retest or verify a fix, or asks if the project is production-ready. Active exploitation only against localhost targets the user is authorized to test; refuses third-party hosts.
+description: Offensive penetration-testing agent skill for a product you own — takes the app through a real red-team engagement — recon, live endpoint enumeration and fuzzing, vulnerability hunting, exploitation, post-exploitation impact proof, then a GO / NO-GO verdict, and retests fixes to prove remediation. Uses only free local open-source tools (ffuf, feroxbuster, nuclei, sqlmap, opengrep, trivy, gitleaks) and chains findings into attacker kill chains showing how the product would be taken down — covering injection, auth and gateway bypass, SSRF, backdoors, prompt injection, races, GraphQL, WebSocket, OAuth/OIDC, and HTTP protocol attacks. Use when the user says /mr-robot, "take down my product", pentest, penetration test, red team, hack my app, find critical vulnerabilities, hunt for backdoors or prompt injection, retest or verify a fix, sarif export, or asks if the project is production-ready. Active exploitation only against localhost targets the user is authorized to test; refuses third-party hosts.
 ---
 
 # mr-robot — penetration test: take down the product
@@ -248,6 +248,11 @@ node skills/mr-robot/scripts/score.mjs <run-dir>/findings.json
 
 This prints the verdict markdown and writes `verdict.json` (CVSS computed from vectors,
 severity estimates marked `*`; NO-GO on confirmed criticals/tags like `rce`/`auth-bypass`/`sqli`).
+KEV-listed CVEs (merge-time CISA catalog annotation) get their own rationale line —
+known-exploited = fix before ship. For pipelines: `score.mjs --ci` gates on the verdict
+(exit 0 only on GO) and `scripts/sarif.mjs <run-dir>/findings.json` emits SARIF 2.1.0
+for code-scanning upload — both in
+[references/07-ci-sarif.md](references/07-ci-sarif.md).
 
 Then write `REPORT.md` following
 [references/04-report-template.md](references/04-report-template.md) — tell it as an
@@ -323,7 +328,8 @@ reading the patch alone.
 | `references/03k-oauth-oidc.md` | delegated login (OAuth/OIDC/next-auth/passport) |
 | `references/04-report-template.md` | Phase 6 — writing the report |
 | `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |
+| `references/07-ci-sarif.md` | CI gates, SARIF export, KEV enrichment |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
-`scripts/race-probe.sh` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/wordlist-common-passwords.txt` ·
+`scripts/race-probe.sh` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/sarif.mjs` · `scripts/wordlist-common-passwords.txt` ·
 `assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`

@@ -8,7 +8,10 @@ endpoint enumeration & fuzzing → vulnerability hunting → exploitation →
 post-exploitation impact proof — using only free, local, open-source tooling, then
 hands back a kill-chain report and a **GO / NO-GO** verdict on shipping. When you
 fix, it closes the loop: `scripts/retest.sh` re-runs the same scope and proves each
-finding `fixed` / `persisting` / `new` — no fix claimed without evidence.
+finding `fixed` / `persisting` / `new` — no fix claimed without evidence. Results
+export as **SARIF 2.1.0** (`scripts/sarif.mjs`) for code-scanning dashboards, CVE
+findings are annotated against the **CISA KEV** catalog (cached, offline-safe), and
+`score.mjs --ci` / `retest.sh` exit codes gate pipelines.
 
 ```
 /mr-robot take down my product
@@ -98,7 +101,7 @@ and always cleans up after itself.
 skills/mr-robot/
 ├── SKILL.md                 # engagement workflow: phases 0–6
 ├── references/              # recon, toolchain, attack playbook, 11 catalogs, report template
-├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · retest.sh · score.mjs
+├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · retest.sh · score.mjs · sarif.mjs
 └── assets/                  # offline SAST rule pack, gitleaks config, path/param wordlists
 ```
 

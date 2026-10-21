@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 // mr-robot — findings.json → CVSS scores, severity rollup, production verdict.
 //
-//   node score.mjs <findings.json> [--out <verdict.json>] [--draft]
+//   node score.mjs <findings.json> [--out <verdict.json>] [--draft] [--ci]
 //
 // --draft: candidate findings not yet verified → verdict is marked "PROVISIONAL".
+// --ci:    exit code as a gate — 0 GO · 1 CONDITIONAL-GO or NO-GO · 2 usage error.
+//          (without --ci the exit code is always 0 on a readable input)
 //
 // Verdict rules (production-readiness gate):
 //   NO-GO            confirmed critical, or any confirmed tag-blocker
 //                    (rce / auth-bypass / authz-bypass / sql-injection / account-takeover)
 //   CONDITIONAL-GO   confirmed highs, unverified critical/high candidates, or medium count >= 3
 //   GO               everything else (may still carry advisory notes)
+//
+// CISA KEV-listed findings (findings.json → coverage.kev_catalog, merge-time
+// annotation) are surfaced in the rationale + verdict.json → kev[] — they never
+// *lower* a verdict, and known-exploited vulns are called out for immediate fix.
 //
 // Zero dependencies. Deterministic. CVSS v3.1 base-score implementation included.
 
@@ -18,14 +24,15 @@ import { dirname, join } from "node:path";
 
 // ---------------------------------------------------------------- CLI
 const args = process.argv.slice(2);
-let findingsPath = null, outPath = null, draft = false;
+let findingsPath = null, outPath = null, draft = false, ci = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--out") outPath = args[++i];
   else if (args[i] === "--draft") draft = true;
+  else if (args[i] === "--ci") ci = true;
   else if (!findingsPath) findingsPath = args[i];
 }
 if (!findingsPath) {
-  console.error("usage: score.mjs <findings.json> [--out <verdict.json>] [--draft]");
+  console.error("usage: score.mjs <findings.json> [--out <verdict.json>] [--draft] [--ci]");
   process.exit(2);
 }
 
@@ -109,6 +116,7 @@ const rows = findings.map((f) => {
   const confirmed = f.status === "confirmed";
   return {
     ...f, cvss_score: score, score_basis: basis, tags, confirmed,
+    kev: f.kev === true,
     blocker: confirmed && (f.severity === "critical" || tags.some((t) => BLOCKER_TAGS.has(t))),
   };
 });
@@ -123,6 +131,7 @@ const unverifiedCriticalHigh = rows.filter(
   (r) => !r.confirmed && (r.severity === "critical" || r.severity === "high")
 );
 const confirmedHighs = rows.filter((r) => r.confirmed && r.severity === "high");
+const kevRows = rows.filter((r) => r.kev);
 const mediums = counts.medium ?? 0;
 
 let verdict;
@@ -152,7 +161,8 @@ const md = [
   `- **Verdict:** **${verdict}**${draft ? " *(provisional — verification incomplete)*" : ""}`,
   `- Target: \`${doc.target ?? "?"}\`  •  Mode: ${doc.mode ?? "passive"}  •  Generated: ${doc.generated_at ?? new Date().toISOString()}`,
   `- Findings: **${rows.length}** candidates — critical ${counts.critical}, high ${counts.high}, medium ${counts.medium}, low ${counts.low}, info ${counts.info}`,
-  `- Confirmed: ${Object.values(confirmedCounts).reduce((a, b) => a + b, 0)}  •  Blockers: **${blockers.length}**`,
+  `- Confirmed: ${Object.values(confirmedCounts).reduce((a, b) => a + b, 0)}  •  Blockers: **${blockers.length}**` +
+    (kevRows.length ? `  •  KEV-listed: **${kevRows.length}**` : ""),
   `- Scanner coverage: ${coverageNote}`,
   ``,
   `## Blockers (force NO-GO)`,
@@ -171,6 +181,9 @@ const md = [
   `_* severity-estimate (no CVSS vector reported by the source scanner)`,
   ``,
   `## Verdict rationale`,
+  ...(kevRows.length ? [
+    `- **Known exploited (CISA KEV): ${kevRows.length}** — observed in-the-wild exploitation: fix now, before other backlog (${kevRows.map((r) => r.id).join(", ")}).`,
+  ] : []),
   verdict === "NO-GO"
     ? `- ${blockers.length} confirmed blocker(s): any confirmed critical or auth/RCE/SQLi tag fails the production gate.`
     : verdict === "CONDITIONAL-GO"
@@ -187,7 +200,9 @@ writeFileSync(outPath, JSON.stringify({
   provisional: Boolean(draft || unverifiedCriticalHigh.length > 0),
   generated_at: new Date().toISOString(),
   counts, confirmed_counts: confirmedCounts,
+  kev: kevRows.map((r) => ({ id: r.id, severity: r.severity, title: r.title })),
   blockers: blockers.map((b) => ({ id: b.id, severity: b.severity, title: b.title, file: b.file, line: b.line, cwe: b.cwe })),
   coverage: { failed: failed.map((s) => s.name), skipped: skipped.map((s) => s.name) },
 }, null, 2));
 console.error(`\n[score] verdict written → ${outPath}`);
+if (ci) process.exit(verdict === "GO" ? 0 : 1);   // CI gate: only GO passes

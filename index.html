@@ -233,7 +233,8 @@ COMMANDS.tools = () => [
   '  <span class="white">nmap</span>(localhost sweep) jwt_tool eslint-plugin-security',
   ["", ""],
   ['<span class="dim">scripts: setup-tools.sh (installs all, idempotent) · scan-all.sh (orchestrator, parallel)</span>', ""],
-  ['<span class="dim">         backdoor-scan.sh (implant hunt) · race-probe.sh (TOCTOU) · retest.sh (fix proof) · score.mjs (CVSS + verdict)</span>', ""],
+  ['<span class="dim">         backdoor-scan.sh (implant hunt) · race-probe.sh (TOCTOU) · retest.sh (fix proof)</span>', ""],
+  ['<span class="dim">         score.mjs (CVSS + verdict, --ci gate) · sarif.mjs (SARIF 2.1.0 export · CISA KEV)</span>', ""],
 ];
 
 COMMANDS.roe = () => [
