@@ -169,7 +169,7 @@ COMMANDS.help = () => [
    '<tr><th>install</th><td>add the skill to your agent (npx / skills.sh)</td></tr>',
    '<tr><th>usage</th><td>how to invoke it — slash style &amp; natural language</td></tr>',
    '<tr><th>phases</th><td>the 0–6 engagement workflow</td></tr>',
-   '<tr><th>tools</th><td>16 free &amp; local tools in the attack toolkit</td></tr>',
+   '<tr><th>tools</th><td>24 free &amp; local tools in the attack toolkit</td></tr>',
    '<tr><th>roe</th><td>rules of engagement — what it will never do</td></tr>',
    '<tr><th>demo</th><td>simulated engagement: "take down my product"</td></tr>',
    '<tr><th>refs</th><td>attack catalogs &amp; reference map</td></tr>',
@@ -228,10 +228,11 @@ COMMANDS.tools = () => [
   '  <span class="white">ffuf</span> feroxbuster httpx katana arjun sqlmap nuclei   <span class="dim">enumeration · fuzzing · DAST</span>',
   ['<span class="dim">── static / supply chain ──</span>', ""],
   '  <span class="white">opengrep</span>(semgrep) gitleaks trivy osv-scanner checkov bandit gosec',
-  '  <span class="white">njsscan</span> brakeman shellcheck cppcheck',
+  '  <span class="white">njsscan</span> brakeman shellcheck cppcheck staticcheck hadolint kube-linter',
+  '  <span class="white">nmap</span>(localhost sweep) jwt_tool eslint-plugin-security',
   ["", ""],
-  ['<span class="dim">scripts: setup-tools.sh (installs all, idempotent) · scan-all.sh (orchestrator)</span>', ""],
-  ['<span class="dim">         backdoor-scan.sh (implant hunt) · score.mjs (CVSS + verdict)</span>', ""],
+  ['<span class="dim">scripts: setup-tools.sh (installs all, idempotent) · scan-all.sh (orchestrator, parallel)</span>', ""],
+  ['<span class="dim">         backdoor-scan.sh (implant hunt) · race-probe.sh (TOCTOU) · score.mjs (CVSS + verdict)</span>', ""],
 ];
 
 COMMANDS.roe = () => [
@@ -338,7 +339,7 @@ async function run(raw){
   await typeLine("fsociety presents // mr-robot v1.0 — penetration-test agent skill", "cyan", 12);
   addLine('<span class="dim">objective: take down your product — before someone else does.</span>');
   addLine("");
-  await typeLine("[ boot ] toolchain: 16 free & local tools ......... ", "dim", 10);
+  await typeLine("[ boot ] toolchain: 24 free & local tools ......... ", "dim", 10);
   addLine('<span class="green">[ ok ]</span> <span class="dim">no accounts · no API keys · your code never leaves this machine</span>');
   addLine('[ boot ] rules of engagement ...................... <span class="red">enforced in code</span> <span class="dim">(localhost-only active tests)</span>');
   addLine("");

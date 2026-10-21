@@ -3,6 +3,7 @@
 # - Idempotent: safe to run repeatedly; already-installed tools are left alone.
 # - Never prompts (non-interactive), never sends your source code anywhere.
 # - Missing tools are reported, never fatal: scan-all.sh degrades gracefully.
+# shellcheck disable=SC2329  # install_* functions are invoked indirectly via ensure()
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -207,6 +208,60 @@ install_nuclei() {
   have nuclei
 }
 ensure nuclei nuclei install_nuclei
+
+# Dockerfile linter
+install_hadolint() {
+  if [ "$HAVE_BREW" = 1 ]; then brew_install hadolint && return 0; fi
+  command -v curl >/dev/null 2>&1 || return 1
+  local tmp; tmp="$(mktemp -d)"
+  quiet curl -fsSL "https://github.com/hadolint/hadolint/releases/latest/download/hadolint-$(uname -s)-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" -o "$tmp/hadolint" \
+    && chmod +x "$tmp/hadolint" && mkdir -p "$HOME/.local/bin" \
+    && mv "$tmp/hadolint" "$HOME/.local/bin/hadolint" \
+    && { rm -rf "$tmp"; PATH="$HOME/.local/bin:$PATH"; have hadolint; } \
+    || { rm -rf "$tmp"; return 1; }
+}
+ensure hadolint hadolint install_hadolint
+
+# Go static analysis (complements gosec — correctness + bugs, not just security)
+install_staticcheck() {
+  if [ "$HAVE_BREW" = 1 ]; then brew_install staticcheck && return 0; fi
+  go_install honnef.co/go/tools/cmd/staticcheck@latest || return 1
+  PATH="$(go env GOPATH 2>/dev/null)/bin:$PATH"
+  have staticcheck
+}
+ensure staticcheck staticcheck install_staticcheck
+
+# Kubernetes manifest linter
+install_kubelinter() {
+  if [ "$HAVE_BREW" = 1 ]; then brew_install kube-linter && return 0; fi
+  go_install golang.stackrox.io/kube-linter/cmd/kube-linter@latest || return 1
+  PATH="$(go env GOPATH 2>/dev/null)/bin:$PATH"
+  have kube-linter
+}
+ensure kube-linter kube-linter install_kubelinter
+
+# JWT attack tool (alg confusion, key confusion, tampering)
+install_jwt_tool() {
+  if [ "$HAVE_BREW" = 1 ]; then brew_install jwt_tool && return 0; fi
+  command -v git >/dev/null 2>&1 || return 1
+  local dest="$HOME/.local/share/jwt_tool"
+  [ -d "$dest" ] || quiet git clone --depth 1 https://github.com/ticarpi/jwt_tool.git "$dest" || return 1
+  quiet pip3 install --user --quiet pyjwt cryptography 2>/dev/null || true
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$dest/jwt_tool.py" "$HOME/.local/bin/jwt_tool"
+  chmod +x "$dest/jwt_tool.py" 2>/dev/null || true
+  PATH="$HOME/.local/bin:$PATH"
+  have jwt_tool
+}
+ensure jwt_tool jwt_tool install_jwt_tool
+
+# nmap — localhost port sweep (unexpected listening services)
+install_nmap() {
+  brew_install nmap && return 0
+  apt_install nmap && return 0
+  return 1
+}
+ensure nmap nmap install_nmap
 
 # ------------------------------------------------- active offensive toolkit (Phase 2/4)
 # Enumeration & live exploitation — all free OSS, same degrade-gracefully contract.

@@ -76,7 +76,8 @@ the coverage ledger.
 ## Zero cost, zero egress
 
 Everything runs on your machine with open-source tools (ffuf, feroxbuster, httpx,
-katana, arjun, nuclei, sqlmap, Opengrep, Trivy, Gitleaks, Bandit, gosec, …). **No
+katana, arjun, nuclei, sqlmap, nmap, Opengrep, Trivy, Gitleaks, Bandit, gosec,
+staticcheck, hadolint, kube-linter, jwt_tool, …). **No
 accounts, no API keys, no code ever leaves your machine.** `scripts/setup-tools.sh`
 installs what's missing and skips gracefully what it can't.
 

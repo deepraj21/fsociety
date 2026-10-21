@@ -185,9 +185,12 @@ severity first:
 bash skills/mr-robot/scripts/scan-all.sh --live http://localhost:PORT <target-dir>
 ```
 
-The script refuses non-loopback hosts. The `--live` run sweeps the running product with
-nuclei's community templates (critical/high/medium) — verify every hit in source before
-it counts. Then attack the enumerated endpoints from Phase 2, guided by
+The script refuses non-loopback hosts. The `--live` run first sweeps localhost ports
+with nmap (top-200 → unexpected listening services), then sweeps the running product
+with nuclei's community templates **filtered to the detected stack's tags**
+(critical/high/medium — the tag set is recorded in the coverage ledger) — verify every
+hit in source before it counts. Then attack the enumerated endpoints from Phase 2,
+guided by
 [references/05-attack-playbook.md](references/05-attack-playbook.md) and
 [references/03b-auth-gateway.md](references/03b-auth-gateway.md):
 

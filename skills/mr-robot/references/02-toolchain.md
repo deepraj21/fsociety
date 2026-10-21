@@ -21,8 +21,13 @@ a crash.
 | Ruby/Rails | **Brakeman** | Rails vulns (free to run on your own code) | Brakeman PUL | Rails |
 | Shell | **ShellCheck** | shell script hazards | GPL-3.0 | sh |
 | C/C++ | **Cppcheck** | memory/buffer smells | GPL-3.0 | C/C++ |
-| DAST (active) | **Nuclei** + community templates | live endpoint vulns | MIT | HTTP targets |
+| Go | **staticcheck** | Go correctness + bug patterns (complements gosec) | MIT | Go |
+| Dockerfile | **hadolint** | Dockerfile best-practice & security lint | GPL-3.0 | Dockerfile |
+| K8s | **kube-linter** | Kubernetes manifest security checks | Apache-2.0 | K8s YAML |
+| JS/TS (opt-in) | **eslint-plugin-security** | object injection, eval, fs-path, timing attacks | MIT | JS/TS |
+| DAST (active) | **Nuclei** + community templates (stack-tag filtered) | live endpoint vulns | MIT | HTTP targets |
 | DAST (active, optional) | **OWASP ZAP** baseline (Docker) | full passive+active crawl | Apache-2.0 | HTTP targets |
+| Recon (active) | **nmap** | localhost port sweep → unexpected listening services | Nmap NPS | TCP ports |
 
 ### Active attack toolkit (Phases 2 & 4 — agent-driven, not part of scan-all.sh)
 
@@ -34,6 +39,8 @@ a crash.
 | **feroxbuster** | recursive content discovery (ffuf complement) | playbook §3 |
 | **arjun** | hidden parameter discovery | playbook §4 |
 | **sqlmap** | SQLi mechanism proof, bounded (`--level 1 --risk 1 --technique T`) | playbook §6 |
+| **jwt_tool** | JWT attacks: alg/key confusion, tampering, `kid` injection | 03b JWT lane |
+| **nmap** | bounded localhost port sweep (top-200, in `scan-all.sh --live`) | orchestrator |
 
 These are run **by you, per endpoint, from
 [05-attack-playbook.md](05-attack-playbook.md)** — they need a live target and scope
@@ -49,6 +56,14 @@ bash scripts/scan-all.sh <dir>         # passive run → <dir>/.mr-robot/run-*/f
 bash scripts/scan-all.sh --live http://localhost:3000 <dir>   # + nuclei; loopback enforced
 ```
 
+- **Parallel runs:** independent passive scanners run as background jobs with
+  per-scanner logs (`scan.log.<tool>`); `wait_bg_all` collects them before the merge.
+  Wall-clock is roughly half of a sequential run on multi-core machines.
+- **Stack-aware nuclei:** the live sweep fingerprints the stack (manifests → tags,
+  e.g. `python,django,flask,nginx,misconfig,exposure,default-login,cves`) and passes
+  it as `-tags` so only relevant templates run — this keeps the 300s watchdog from
+  firing on the full community pack. The chosen tag set is recorded in
+  `findings.json → coverage.nuclei_template_tags` and the coverage ledger.
 - **Rule packs:** tries the online community pack first (downloads *rules only* —
   never your source), falls back to the bundled `assets/rules/local.yml` for fully
   offline runs.
@@ -62,12 +77,15 @@ bash scripts/scan-all.sh --live http://localhost:3000 <dir>   # + nuclei; loopba
 ## Specialist selection rules (run what matches the stack)
 
 - `requirements.txt`/`pyproject.toml` → bandit
-- `go.mod` → gosec
-- `package.json` → njsscan
+- `go.mod` → gosec + staticcheck
+- `package.json` → njsscan (+ eslint-plugin-security when already in node_modules)
 - `Gemfile` → brakeman
 - `*.sh` files → shellcheck
 - `*.c/cpp/h` → cppcheck
 - IaC present → checkov (+ trivy misconfig)
+- Dockerfiles present → hadolint
+- k8s manifest dirs (`kubernetes/`, `k8s/`, `deploy/`, `infra/`, `charts/`) → kube-linter
+- `--live` mode → nmap localhost sweep (top-200) + stack-tagged nuclei
 - always → opengrep/semgrep, gitleaks, trivy, backdoor-scan.sh
 
 ## Optional extras (manual, still free)

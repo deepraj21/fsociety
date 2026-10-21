@@ -50,7 +50,8 @@ PYEOF
 fi
 
 have() { command -v "$1" >/dev/null 2>&1; }
-export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin"
+PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin"
+export PATH
 
 SCANNERS_JSON="$OUT/.scanners.tsv"   # name <TAB> status <TAB> detail
 : > "$SCANNERS_JSON"
@@ -61,22 +62,55 @@ failrun() { note "$1" failed "${2:-}"; printf '[fail]   %s — %s\n' "$1" "${2:-
 
 valid_json() { [ -s "$1" ] && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$1" 2>/dev/null; }
 
-# run_into <tool> <outfile> <accept-exit-codes...> -- <cmd...>
-#   Runs cmd, tolerating "findings" exit codes; validates outfile when it is JSON.
-run_into() {
+# run_into_bg <tool> <outfile> <accept-exit-codes...> -- <cmd...>
+#   Runs cmd in background, tolerating "findings" exit codes; validates outfile
+#   when it is JSON. Collect all background jobs with wait_bg_all before merging.
+BG_PIDS=""
+run_into_bg() {
   local tool="$1" out="$2"; shift 2
   local accept=(); while [ "$1" != "--" ]; do accept+=("$1"); shift; done; shift
-  local rc=0; "$@" >>"$LOG" 2>&1 || rc=$?
-  local okc=0 c
-  for c in 0 1 "${accept[@]}"; do [ "$rc" = "$c" ] && okc=1 && break; done
-  if [ "$okc" = 1 ] && valid_json "$out"; then
-    ran "$tool"
-  elif [ "$okc" = 1 ]; then
-    failrun "$tool" "no valid json output"
-  else
-    failrun "$tool" "exit $rc"
-  fi
+  (
+    local rc=0; "$@" >>"$LOG.$tool" 2>&1 || rc=$?
+    local okc=0 c
+    # ${arr[@]+...} guard: empty array expansion is "unbound" under set -u on bash 3.2
+    for c in 0 1 ${accept[@]+"${accept[@]}"}; do [ "$rc" = "$c" ] && okc=1 && break; done
+    if [ "$okc" = 1 ] && valid_json "$out"; then
+      ran "$tool"
+    elif [ "$okc" = 1 ]; then
+      failrun "$tool" "no valid json output"
+    else
+      failrun "$tool" "exit $rc"
+    fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 }
+wait_bg_all() {
+  local p
+  for p in $BG_PIDS; do wait "$p" 2>/dev/null; done
+  BG_PIDS=""
+}
+
+# ---------------------------------------------------------------- stack fingerprint (for nuclei tags + new linters)
+STACK_TAGS=""
+detect_stack() {
+  local t="$1" tags=""
+  [ -f "$t/package.json" ]      && tags="$tags,cdn,js,nodejs"
+  [ -f "$t/requirements.txt" ] || [ -f "$t/pyproject.toml" ] && tags="$tags,python,flask,django,fastapi"
+  [ -f "$t/go.mod" ]            && tags="$tags,golang"
+  [ -f "$t/Gemfile" ]           && tags="$tags,ruby,rails"
+  [ -f "$t/pom.xml" ] || [ -f "$t/build.gradle" ] && tags="$tags,java,spring"
+  [ -f "$t/composer.json" ]     && tags="$tags,php,laravel"
+  [ -f "$t/Cargo.toml" ]        && tags="$tags,rust"
+  [ -f "$t/Dockerfile" ]        && tags="$tags,docker,container"
+  [ -d "$t/kubernetes" ] || [ -d "$t/k8s" ] || ls "$t"/deploy/*.yaml >/dev/null 2>&1 && tags="$tags,k8s"
+  # always include generic misconfig/exposure checks (comma only if stack tags exist)
+  tags="${tags#,}"
+  [ -n "$tags" ] && tags="$tags,"
+  tags="${tags}misconfig,exposure,default-login,cves"
+  printf '%s' "$tags" | tr ',' '\n' | sort -u | paste -sd, -
+}
+STACK_TAGS="$(detect_stack "$TARGET")"
+echo "[scan] stack tags: $STACK_TAGS"
 
 echo "[scan] target : $TARGET"
 echo "[scan] output : $OUT"
@@ -90,62 +124,69 @@ EXCL_FLAGS=(--exclude '.mr-robot/*' --exclude 'node_modules/*' --exclude '*/node
             --exclude 'vendor/*' --exclude '.venv/*' --exclude 'venv/*'
             --exclude 'dist/*' --exclude 'build/*' --exclude 'target/*' --exclude '.git/*')
 
-# ---------------------------------------------------------------- SAST
+# ---------------------------------------------------------------- SAST (bg)
 SAST_ENGINE=""
 have opengrep && SAST_ENGINE=opengrep
 [ -n "$SAST_ENGINE" ] || { have semgrep && SAST_ENGINE=semgrep; }
 if [ -n "$SAST_ENGINE" ]; then
+  (
   cfg_ok=0
   # 1st: online community pack (downloads RULES only — never your code)
   if "$SAST_ENGINE" scan --config p/security-audit --json --quiet \
-       "${EXCL_FLAGS[@]}" --output "$OUT/sast.json" "$TARGET" >>"$LOG" 2>&1 \
+       "${EXCL_FLAGS[@]}" --output "$OUT/sast.json" "$TARGET" >>"$LOG.sast" 2>&1 \
      && valid_json "$OUT/sast.json"; then
     cfg_ok=1; ran "$SAST_ENGINE (p/security-audit)"
   fi
   # 2nd: bundled offline rules — zero network
   if [ "$cfg_ok" = 0 ] && "$SAST_ENGINE" scan --config "$SKILL_DIR/assets/rules/local.yml" \
-       --json --quiet "${EXCL_FLAGS[@]}" --output "$OUT/sast.json" "$TARGET" >>"$LOG" 2>&1 \
+       --json --quiet "${EXCL_FLAGS[@]}" --output "$OUT/sast.json" "$TARGET" >>"$LOG.sast" 2>&1 \
      && valid_json "$OUT/sast.json"; then
     cfg_ok=1; ran "$SAST_ENGINE (bundled offline rules)"
   fi
   [ "$cfg_ok" = 1 ] || failrun "$SAST_ENGINE" "rule config unavailable"
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 else
   skip "opengrep/semgrep"
 fi
 
-# ---------------------------------------------------------------- Secrets (tree + git history)
+# ---------------------------------------------------------------- Secrets (bg: tree + git history)
 if have gitleaks; then
+  (
   GLCONF="$SKILL_DIR/assets/gitleaks.toml"   # default rules + path allowlist
   gl_ok=0
   # working tree (catches uncommitted .env, keys, fixtures)
   if gitleaks dir "$TARGET" -c "$GLCONF" -f json -r "$OUT/gitleaks-dir.json" \
-       --redact --no-banner --exit-code 0 >>"$LOG" 2>&1 \
+       --redact --no-banner --exit-code 0 >>"$LOG.gitleaks" 2>&1 \
      && valid_json "$OUT/gitleaks-dir.json"; then gl_ok=1; fi
   # git history (catches secrets ever committed) — only inside a repo
   if git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     if gitleaks git "$TARGET" -c "$GLCONF" -f json -r "$OUT/gitleaks-git.json" \
-         --redact --no-banner --exit-code 0 >>"$LOG" 2>&1 \
+         --redact --no-banner --exit-code 0 >>"$LOG.gitleaks" 2>&1 \
        && valid_json "$OUT/gitleaks-git.json"; then gl_ok=1; fi
   fi
   if [ "$gl_ok" = 1 ]; then ran "gitleaks (secrets: tree + history)"; else failrun "gitleaks" "no valid output"; fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 else skip "gitleaks"; fi
 
-# ---------------------------------------------------------------- SCA: deps / CVEs / IaC / misconfig
+# ---------------------------------------------------------------- SCA: deps / CVEs / IaC / misconfig (bg)
 if have trivy; then
-  run_into trivy "$OUT/trivy.json" 0 1 -- \
+  run_into_bg trivy "$OUT/trivy.json" 0 1 -- \
     trivy fs --format json --quiet --scanners vuln,secret,misconfig \
       --skip-dirs "$EXCL" --output "$OUT/trivy.json" "$TARGET"
 else skip "trivy"; fi
 
 if have osv-scanner; then
+  (
   osv_rc=0
   # current v2 syntax; older syntax as fallback — both validated after the run
-  osv-scanner scan source -r "$TARGET" --format json > "$OUT/osv.json" 2>>"$LOG" || osv_rc=$?
+  osv-scanner scan source -r "$TARGET" --format json > "$OUT/osv.json" 2>>"$LOG.osv" || osv_rc=$?
   if [ "$osv_rc" -gt 1 ] && ! valid_json "$OUT/osv.json"; then
     osv_rc=0
-    osv-scanner scan --format json -r "$TARGET" > "$OUT/osv.json" 2>>"$LOG" || osv_rc=$?
+    osv-scanner scan --format json -r "$TARGET" > "$OUT/osv.json" 2>>"$LOG.osv" || osv_rc=$?
   fi
-  if ! valid_json "$OUT/osv.json" && grep -q "No package sources" "$LOG" 2>/dev/null; then
+  if ! valid_json "$OUT/osv.json" && grep -q "No package sources" "$LOG.osv" 2>/dev/null; then
     # not an error: the project simply has no lockfiles for osv to read
     note osv-scanner skipped "no lockfiles/manifests"
     echo "[skip]   osv-scanner (no package sources)"
@@ -154,86 +195,169 @@ if have osv-scanner; then
   else
     failrun "osv-scanner" "exit $osv_rc"
   fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 else skip "osv-scanner"; fi
 
 if have checkov; then
-  checkov -d "$TARGET" --quiet --compact --output json > "$OUT/checkov.json" 2>>"$LOG"
+  (
+  checkov -d "$TARGET" --quiet --compact --output json > "$OUT/checkov.json" 2>>"$LOG.checkov"
   rc=$?
   if [ "$rc" -le 1 ] && valid_json "$OUT/checkov.json"; then ran "checkov (IaC/cloud)"; else failrun "checkov" "exit $rc"; fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 else skip "checkov"; fi
 
-# ---------------------------------------------------------------- language specialists
+# ---------------------------------------------------------------- language specialists (bg)
 if have bandit; then
-  bandit -q -f json -o "$OUT/bandit.json" -r "$TARGET" -x "$EXCL_GLOB" >>"$LOG" 2>&1
-  rc=$?
-  if [ "$rc" -le 1 ] && valid_json "$OUT/bandit.json"; then ran "bandit (python)"; else failrun "bandit" "exit $rc"; fi
+  run_into_bg bandit "$OUT/bandit.json" -- \
+    bandit -q -f json -o "$OUT/bandit.json" -r "$TARGET" -x "$EXCL_GLOB"
 else skip "bandit"; fi
 
 if have gosec && [ -f "$TARGET/go.mod" ]; then
-  ( cd "$TARGET" && gosec -quiet -fmt json -out "$OUT/gosec.json" ./... ) >>"$LOG" 2>&1
+  (
+  # NOTE: no -quiet — in gosec 2.29.0 -quiet suppresses the -out report file entirely
+  ( cd "$TARGET" && gosec -fmt json -out "$OUT/gosec.json" ./... ) >>"$LOG.gosec" 2>&1
   rc=$?
   if [ "$rc" -le 1 ] && valid_json "$OUT/gosec.json"; then ran "gosec (go)"; else failrun "gosec" "exit $rc"; fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 elif have gosec; then
   note gosec skipped "no go.mod"
 fi
 
 if have njsscan; then
-  njsscan --json "$TARGET" -o "$OUT/njsscan.json" >>"$LOG" 2>&1
-  rc=$?
-  if [ "$rc" -le 1 ] && valid_json "$OUT/njsscan.json"; then ran "njsscan (nodejs)"; else failrun "njsscan" "exit $rc"; fi
+  run_into_bg njsscan "$OUT/njsscan.json" -- \
+    njsscan --json "$TARGET" -o "$OUT/njsscan.json"
 else skip "njsscan"; fi
 
 if have brakeman && [ -f "$TARGET/Gemfile" ]; then
-  ( cd "$TARGET" && brakeman -f json -o "$OUT/brakeman.json" --no-pager ) >>"$LOG" 2>&1
+  (
+  ( cd "$TARGET" && brakeman -f json -o "$OUT/brakeman.json" --no-pager ) >>"$LOG.brakeman" 2>&1
   rc=$?
   if [ "$rc" -le 1 ] && valid_json "$OUT/brakeman.json"; then ran "brakeman (rails)"; else failrun "brakeman" "exit $rc"; fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 elif have brakeman; then
   note brakeman skipped "no Gemfile"
 fi
 
+if have staticcheck && [ -f "$TARGET/go.mod" ]; then
+  run_into_bg staticcheck "$OUT/staticcheck.json" -- \
+    bash -c "cd '$TARGET' && staticcheck -f json ./... > '$OUT/staticcheck.json' 2>>'$LOG.staticcheck'; \
+             [ -s '$OUT/staticcheck.json' ] || echo '[]' > '$OUT/staticcheck.json'"
+elif have staticcheck; then
+  note staticcheck skipped "no go.mod"
+fi
+
+if have hadolint; then
+  hl_files=()
+  while IFS= read -r _hl; do hl_files+=("$_hl"); done < <(find "$TARGET" -maxdepth 3 -type f \( -name 'Dockerfile' -o -name 'Dockerfile.*' -o -name '*.dockerfile' \) \
+      -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | head -n 20)
+  if [ "${#hl_files[@]}" -gt 0 ]; then
+    run_into_bg hadolint "$OUT/hadolint.json" -- hadolint -f json -o "$OUT/hadolint.json" "${hl_files[@]}"
+  else note hadolint skipped "no Dockerfiles"; fi
+else skip "hadolint"; fi
+
+if have kube-linter; then
+  kl_target=""
+  for _kl in "$TARGET/kubernetes" "$TARGET/k8s" "$TARGET/deploy" "$TARGET/infra" "$TARGET/charts" "$TARGET/helm"; do
+    [ -d "$_kl" ] && { kl_target="$_kl"; break; }
+  done
+  if [ -n "$kl_target" ]; then
+    run_into_bg kube-linter "$OUT/kubelinter.json" -- \
+      kube-linter lint "$kl_target" --format json --output "$OUT/kubelinter.json"
+  else note kube-linter skipped "no k8s manifests dir"; fi
+else skip "kube-linter"; fi
+
+# eslint-plugin-security — only when the project already has it installed
+# (we never modify the user's project by installing dev-deps ourselves)
+if have npx && [ -f "$TARGET/package.json" ] && [ -d "$TARGET/node_modules/eslint-plugin-security" ]; then
+  cat > "$OUT/eslint-sec.json" <<'ESLCONF'
+{ "plugins": ["security"], "parserOptions": { "ecmaVersion": 2022, "sourceType": "module" },
+  "rules": { "security/detect-object-injection": "warn", "security/detect-non-literal-fs-filename": "warn",
+             "security/detect-eval-with-expression": "error", "security/detect-possible-timing-attacks": "warn",
+             "security/detect-pseudoRandomBytes": "error" } }
+ESLCONF
+  run_into_bg eslint-sec "$OUT/eslint-sec-findings.json" -- \
+    bash -c "cd '$TARGET' && npx --no-install eslint --no-eslintrc --config '$OUT/eslint-sec.json' \
+             --resolve-plugins-relative-to '$TARGET' --ext .js,.ts,.jsx,.tsx -f json . \
+             --ignore-pattern node_modules --ignore-pattern .mr-robot > '$OUT/eslint-sec-findings.json'"
+else
+  have npx && [ -f "$TARGET/package.json" ] && note eslint-sec skipped "eslint-plugin-security not in node_modules"
+fi
+
 if have shellcheck; then
+  (
   sh_files=()
   while IFS= read -r _sf; do sh_files+=("$_sf"); done < <(find "$TARGET" -type f \( -name '*.sh' -o -name '*.bash' \) \
       -not -path '*/.mr-robot/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | head -n 400)
   if [ "${#sh_files[@]}" -gt 0 ]; then
-    shellcheck -f json1 "${sh_files[@]}" > "$OUT/shellcheck.json" 2>>"$LOG"
+    shellcheck -f json1 "${sh_files[@]}" > "$OUT/shellcheck.json" 2>>"$LOG.shellcheck"
     rc=$?
     if [ "$rc" -le 1 ] && valid_json "$OUT/shellcheck.json"; then ran "shellcheck (${#sh_files[@]} shell files)"; else failrun "shellcheck" "exit $rc"; fi
   else note shellcheck skipped "no shell files"; fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 else skip "shellcheck"; fi
 
 if have cppcheck; then
+  (
   c_files=()
   while IFS= read -r _cf; do c_files+=("$_cf"); done < <(find "$TARGET" -type f \( -name '*.c' -o -name '*.cpp' -o -name '*.cc' -o -name '*.h' \) \
       -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | head -n 400)
   if [ "${#c_files[@]}" -gt 0 ]; then
     cppcheck --enable=warning,performance,portability --inline-suppr --template='{...}' \
-      --xml-version=2 "${c_files[@]}" > "$OUT/cppcheck.xml" 2>>"$LOG"
+      --xml-version=2 "${c_files[@]}" > "$OUT/cppcheck.xml" 2>>"$LOG.cppcheck"
     rc=$?
     if [ "$rc" -le 1 ] && [ -s "$OUT/cppcheck.xml" ]; then ran "cppcheck (c/c++)"; else failrun "cppcheck" "exit $rc"; fi
   else note cppcheck skipped "no c/c++ files"; fi
+  ) &
+  BG_PIDS="$BG_PIDS $!"
 else skip "cppcheck"; fi
+
+# collect all passive scanner jobs before proceeding
+wait_bg_all
 
 # ---------------------------------------------------------------- active DAST (gated)
 if [ -n "$LIVE_URL" ]; then
   echo "[scan] step 2/3 — active DAST against $LIVE_URL (loopback only)"
+
+  # ---- bounded localhost port sweep (nmap) — unexpected listening services
+  if have nmap; then
+    nmap_host="$(printf '%s' "$LIVE_URL" | sed -E 's#^[a-zA-Z]+://([^:/]+).*#\1#')"
+    case "$nmap_host" in
+      0.0.0.0) nmap_host="127.0.0.1" ;;
+    esac
+    if nmap -Pn -T4 --top-ports 200 -oX "$OUT/nmap.xml" -PE -n "$nmap_host" >>"$LOG.nmap" 2>&1 \
+       && [ -s "$OUT/nmap.xml" ]; then
+      ran "nmap (localhost top-200 ports)"
+    else
+      failrun "nmap" "exit $?"
+    fi
+  else skip "nmap"; fi
+
+  # ---- nuclei DAST — stack-aware template tag selection
   if have nuclei; then
     # first run needs the community template pack — warm it once (downloads RULES
     # only, never your code). Subsequent runs are fully local.
     NUC_TEMPLATES="${NUCLEI_TEMPLATES_DIR:-$HOME/nuclei-templates}"
     if [ ! -d "$NUC_TEMPLATES" ]; then
       echo "[scan] warming nuclei templates (one-time download)..."
-      nuclei -update-templates >>"$LOG" 2>&1 || true
+      nuclei -update-templates >>"$LOG.nuclei" 2>&1 || true
     fi
     nuc_rc=0
-    # localhost: 25 rps / 5 workers is a bounded, minutes-scale sweep of the
-    # community pack — safe against the user's own instance.
-    NUC_CMD=(nuclei -u "$LIVE_URL" -severity critical,high,medium -silent -duc \
-             -jsonl-export "$OUT/nuclei.jsonl" -rate-limit 25 -c 5)
+    # Stack-aware tag selection: only templates relevant to the detected stack
+    # (e.g. python/django/flask + generic misconfig/exposure/default-login/cves).
+    # Falls back to the generic set if no stack detected — the goal is to stay
+    # inside the 300s watchdog rather than sweep the full community pack.
+    echo "[scan] nuclei tags: $STACK_TAGS"
+    NUC_CMD=(nuclei -u "$LIVE_URL" -tags "$STACK_TAGS" -severity "critical,high,medium"
+             -silent -duc -jsonl-export "$OUT/nuclei.jsonl" -rate-limit 25 -c 5)
     # Portable 300s hard cap: background the sweep + watchdog kill. Signal-based
     # wrappers (GNU timeout / perl alarm) don't work here — nuclei (Go) ignores
     # SIGALRM and GNU timeout doesn't exist on stock macOS. SIGTERM/SIGKILL do work.
-    "${NUC_CMD[@]}" >>"$LOG" 2>&1 &
+    "${NUC_CMD[@]}" >>"$LOG.nuclei" 2>&1 &
     nuc_pid=$!
     (
       sleep 300
@@ -247,11 +371,11 @@ if [ -n "$LIVE_URL" ]; then
     wait "$nuc_wd" 2>/dev/null
     # 143 = SIGTERM (watchdog), 137 = SIGKILL (watchdog, escalated)
     if [ "$nuc_rc" -eq 143 ] || [ "$nuc_rc" -eq 137 ]; then
-      failrun "nuclei" "timed out after 300s (partial results kept if any)"
+      failrun "nuclei" "timed out after 300s (partial results kept if any; tags: $STACK_TAGS)"
     elif [ "$nuc_rc" -le 1 ]; then
-      ran "nuclei (live, $LIVE_URL)"
+      ran "nuclei (live, $LIVE_URL, tags: $STACK_TAGS)"
     else
-      failrun "nuclei" "exit $nuc_rc"
+      failrun "nuclei" "exit $nuc_rc (tags: $STACK_TAGS)"
     fi
   else skip "nuclei"; fi
 else
@@ -261,10 +385,12 @@ fi
 # ---------------------------------------------------------------- merge
 echo "[scan] step 3/3 — merging raw outputs → findings.json"
 MERGED="$OUT/findings.json"
-python3 - "$OUT" "$TARGET" "$MERGED" <<'PYEOF'
+python3 - "$OUT" "$TARGET" "$MERGED" "$STACK_TAGS" "${LIVE_URL:-}" <<'PYEOF'
 import json, os, re, sys, glob, datetime, xml.etree.ElementTree as ET
 
 out, target, merged_path = sys.argv[1], sys.argv[2], sys.argv[3]
+stack_tags = sys.argv[4] if len(sys.argv) > 4 else ""
+live_url = sys.argv[5] if len(sys.argv) > 5 else ""
 SEVS = {"critical", "high", "medium", "low", "info"}
 
 def sev(x, default="info"):
@@ -496,6 +622,78 @@ if os.path.exists(p) and os.path.getsize(p) > 0:
     except Exception:
         pass
 
+# --- hadolint --------------------------------------------------------------------
+d = load("hadolint.json")
+if isinstance(d, list):
+    for r in d:
+        lvl = str(r.get("level", "warning")).lower()
+        s = {"error": "medium", "warning": "low"}.get(lvl, "info")
+        code = str(r.get("code", ""))
+        add("hadolint", f"Dockerfile: {r.get('message', '')} (rule {code})",
+            r.get("file"), r.get("line"), s, None, None, None,
+            {"engine": "lint"})
+
+# --- staticcheck -----------------------------------------------------------------
+d = load("staticcheck.json")
+if isinstance(d, list):
+    for r in d:
+        code = r.get("code", "")
+        sev_s = "medium" if code.startswith(("SA9", "SA10", "SA2")) else "low"
+        add("staticcheck", f"{code}: {r.get('message', '')}",
+            r.get("location", {}).get("file"), (r.get("location", {}).get("line")),
+            sev_s, None, None, None, {"engine": "sast"})
+
+# --- kube-linter --------------------------------------------------------------------
+# kube-linter JSON: {"Checks":[defs], "Reports":[{Check, Diagnostic:{Message}, Object:{Metadata:{FilePath}, ...}}], "Summary":...}
+d = load("kubelinter.json")
+if isinstance(d, dict):
+    _sec_kw = ("privilege", "root", "hostnetwork", "hostpid", "hostipc",
+               "capabilities", "seccomp", "apparmor", "automount", "serviceaccount")
+    for r in d.get("Reports", []) or []:
+        check = str(r.get("Check", r.get("CheckName", "")))
+        obj = r.get("Object", {}) or {}
+        msg = ((r.get("Diagnostic") or {}).get("Message")) or r.get("Description", "")
+        sev_k = "medium" if any(w in check.lower() for w in _sec_kw) else "low"
+        add("kube-linter", f"[k8s] {check}: {msg}",
+            (obj.get("Metadata") or {}).get("FilePath") or obj.get("File"),
+            obj.get("Line"),
+            sev_k, None, "A05:2025", None, {"engine": "iac"})
+
+# --- eslint-plugin-security --------------------------------------------------------
+def walk_eslint(obj, tool):
+    if isinstance(obj, dict):
+        if "ruleId" in obj and obj.get("ruleId"):
+            sev_e = "medium" if str(obj.get("severity", 1)) == "2" else "low"
+            add(tool, f"{obj['ruleId']}: {obj.get('message', '')}",
+                (obj.get("line") and obj.get("filePath")) or obj.get("filePath"),
+                obj.get("line"), sev_e, None, None, None, {"engine": "sast"})
+        for v in obj.values(): walk_eslint(v, tool)
+    elif isinstance(obj, list):
+        for v in obj: walk_eslint(v, tool)
+
+d = load("eslint-sec-findings.json")
+if d is not None: walk_eslint(d, "eslint-sec")
+
+# --- nmap (unexpected listening services) -------------------------------------------
+p = os.path.join(out, "nmap.xml")
+if os.path.exists(p) and os.path.getsize(p) > 0:
+    try:
+        root = ET.parse(p).getroot()
+        expected = {80, 443, 3000, 5000, 5173, 4173, 8000, 8080, 8443, 8888, 9000, 9090, 9200, 9300, 27017, 5432, 3306, 6379}
+        for host in root.iter("host"):
+            for port in host.iter("port"):
+                state = port.find("state")
+                if state is None or state.get("state") != "open": continue
+                pid = int(port.get("portid", 0))
+                service = port.find("service")
+                svc_name = service.get("name", "") if service is not None else ""
+                s = "info" if pid in expected else "medium"
+                note_str = "expected" if pid in expected else "unexpected — verify it is intentional"
+                add("nmap", f"Port {pid}/{port.get('protocol')} open ({svc_name}) — {note_str}",
+                    None, None, s, None, None, None, {"engine": "recon"})
+    except Exception:
+        pass
+
 # --- scanners status ---------------------------------------------------------------
 scanners = []
 sp = os.path.join(out, ".scanners.tsv")
@@ -504,6 +702,7 @@ if os.path.exists(sp):
         parts = ln.rstrip("\n").split("\t")
         if len(parts) >= 2:
             scanners.append({"name": parts[0], "status": parts[1], "detail": parts[2] if len(parts) > 2 else ""})
+scanners.sort(key=lambda s: s["name"])   # parallel runs write TSV out of order
 
 # --- dedupe + finalize --------------------------------------------------------------
 seen, final = set(), []
@@ -521,6 +720,10 @@ doc = {
     "target": target,
     "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     "mode": "active" if any(s["name"].startswith("nuclei") and s["status"] == "ok" for s in scanners) else "passive",
+    "coverage": {
+        "nuclei_template_tags": stack_tags or None,
+        "live_url": live_url or None,
+    },
     "scanners": scanners,
     "counts": {s: sum(1 for f in final if f["severity"] == s) for s in SEVS},
     "findings": final,
