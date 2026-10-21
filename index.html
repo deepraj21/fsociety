@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mr-robot — engagement console</title>
+<style>
+  :root{
+    --green:#00ff9c; --green-dim:#0a6b46; --cyan:#31d7ff; --yellow:#ffd166;
+    --red:#ff4d5e; --grey:#4d6b5c;
+    --font: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    background:#030503; color:var(--green); font-family:var(--font);
+    display:flex; flex-direction:column; overflow:hidden; font-size:14px;
+  }
+  /* CRT atmosphere: scanlines + vignette + flicker */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+  }
+  body::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:4;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.6) 100%);
+  }
+  .crt{animation:flicker 4.2s infinite}
+  @keyframes flicker{
+    0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:.93} 94%{opacity:1}
+    97%{opacity:.96} 98%{opacity:1}
+  }
+
+  .screen{
+    flex:1; overflow-y:auto; padding:14px 18px 4px; line-height:1.5;
+    scrollbar-width:thin; scrollbar-color:var(--green-dim) transparent;
+  }
+  .screen::-webkit-scrollbar{width:8px}
+  .screen::-webkit-scrollbar-thumb{background:var(--green-dim)}
+  .line{white-space:pre-wrap; word-break:break-word}
+  .banner{font-size:clamp(7px, 2.2vw, 15px); line-height:1.25}
+  .dim{color:var(--grey)} .cyan{color:var(--cyan)} .yellow{color:var(--yellow)}
+  .red{color:var(--red)} .white{color:#d7ffe9} .bold{font-weight:700}
+  .glow{text-shadow:0 0 8px rgba(0,255,156,.7)}
+  .cyanglow{text-shadow:0 0 8px rgba(49,215,255,.6)}
+
+  /* prompt row lives inline in the scroll flow, exactly like a real shell */
+  .promptrow{display:flex; align-items:baseline; padding-right:14px}
+  .promptrow .pl{white-space:pre}
+  .inline-input{
+    flex:1; min-width:3ch; background:transparent; border:none; outline:none;
+    color:var(--green); font-family:var(--font); font-size:inherit;
+    caret-color:var(--green); padding:0;
+  }
+  .inline-input::placeholder{color:var(--green-dim)}
+  table{border-collapse:collapse; margin:4px 0}
+  td,th{padding:1px 14px 1px 0; text-align:left; vertical-align:top}
+  th{color:var(--cyan); font-weight:400}
+  @media (max-width:640px){
+    body{font-size:12px}
+    .screen{padding:10px 10px 4px}
+  }
+</style>
+</head>
+<body class="crt">
+  <div class="screen" id="screen" aria-live="polite"></div>
+
+<script>
+"use strict";
+const screenEl = document.getElementById("screen");
+let currentInput = null;   /* the one live prompt input, inline in the scroll flow */
+
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let typing = false;
+
+function addLine(html, cls){
+  const d = document.createElement("div");
+  d.className = "line" + (cls ? " " + cls : "");
+  d.innerHTML = html || "&nbsp;";   /* empty lines keep their height */
+  screenEl.appendChild(d);
+  screenEl.scrollTop = screenEl.scrollHeight;
+  return d;
+}
+async function typeLine(text, cls, speed){
+  typing = true;
+  const d = addLine("", cls);
+  for (const ch of text){
+    d.textContent += ch;
+    screenEl.scrollTop = screenEl.scrollHeight;
+    await sleep(speed || 8);
+  }
+  typing = false;
+  return d;
+}
+function printBlock(lines){
+  for (const l of lines){
+    if (Array.isArray(l)) addLine(l[0], l[1]); else addLine(l);
+  }
+}
+/* build a single [html, cls] entry from table rows so printBlock renders it whole */
+const tbl = rows => ['<table>' + rows.join("") + '</table>', ""];
+
+/* ---------- inline prompt (appended after output, like a real shell) ---------- */
+function makePrompt(){
+  const row = document.createElement("div");
+  row.className = "line promptrow";
+  row.innerHTML = '<span class="pl"><span class="cyan">operator@fsociety</span>:<span class="dim">~/product</span>$ </span>';
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.className = "inline-input";
+  inp.placeholder = "help";
+  inp.spellcheck = false;
+  inp.setAttribute("aria-label", "terminal input");
+  row.appendChild(inp);
+  screenEl.appendChild(row);
+  screenEl.scrollTop = screenEl.scrollHeight;
+  wireInput(inp);
+  return inp;
+}
+
+function wireInput(inp){
+  inp.addEventListener("keydown", async e => {
+    if (e.key === "Enter"){
+      e.preventDefault();
+      if (typing || inp !== currentInput) return;   /* one live prompt only */
+      const v = inp.value;
+      inp.replaceWith(Object.assign(document.createElement("span"), {className:"white", textContent:v}));
+      await run(v);
+      currentInput = makePrompt();
+      currentInput.focus();
+    } else if (e.key === "ArrowUp"){
+      e.preventDefault();
+      if (histIdx > 0){ histIdx--; inp.value = history[histIdx] || ""; }
+    } else if (e.key === "ArrowDown"){
+      e.preventDefault();
+      if (histIdx < history.length){ histIdx++; inp.value = history[histIdx] || ""; }
+    }
+  });
+}
+
+/* click anywhere on the screen to refocus the live prompt (unless selecting text) */
+screenEl.addEventListener("mouseup", () => {
+  if (currentInput && window.getSelection().isCollapsed) currentInput.focus();
+});
+
+/* ---------- content ---------- */
+/* FSOCIETY banner — composed from fixed-width glyphs so alignment is exact */
+const GLYPHS = {
+  F:["██████","██    ","█████ ","██    ","██    "],
+  S:[" █████","██    "," █████","    ██","█████ "],
+  O:[" ████ ","██  ██","██  ██","██  ██"," ████ "],
+  C:[" █████","██    ","██    ","██    "," █████"],
+  I:["██████","  ██  ","  ██  ","  ██  ","██████"],
+  E:["██████","██    ","█████ ","██    ","██████"],
+  T:["██████","  ██  ","  ██  ","  ██  ","  ██  "],
+  Y:["██  ██"," ████ ","  ██  ","  ██  ","  ██  "],
+};
+const BANNER = Array.from({length: 5}, (_, r) =>
+  "FSOCIETY".split("").map(ch => GLYPHS[ch][r]).join(" ")
+).join("\n");
+
+const COMMANDS = {};
+
+COMMANDS.help = () => [
+  ['<span class="bold cyanglow">AVAILABLE COMMANDS</span>', ""],
+  ["", ""],
+  tbl([
+   '<tr><th>install</th><td>add the skill to your agent (npx / skills.sh)</td></tr>',
+   '<tr><th>usage</th><td>how to invoke it — slash style &amp; natural language</td></tr>',
+   '<tr><th>phases</th><td>the 0–6 engagement workflow</td></tr>',
+   '<tr><th>tools</th><td>16 free &amp; local tools in the attack toolkit</td></tr>',
+   '<tr><th>roe</th><td>rules of engagement — what it will never do</td></tr>',
+   '<tr><th>demo</th><td>simulated engagement: "take down my product"</td></tr>',
+   '<tr><th>refs</th><td>attack catalogs &amp; reference map</td></tr>',
+   '<tr><th>whoami</th><td>…</td></tr>',
+   '<tr><th>clear</th><td>clear the screen</td></tr>',
+  ]),
+  ['<span class="dim">↑/↓ recalls history</span>', ""],
+];
+
+COMMANDS.install = () => [
+  ['<span class="bold cyanglow">INSTALL</span>', ""],
+  ["", ""],
+  ['<span class="dim">$</span> <span class="white">npx skills add deepraj21/fsociety --skill mr-robot</span>', ""],
+  ["", ""],
+  ['<span class="dim">browse it on</span> <span class="cyan">skills.sh/deepraj21/fsociety</span>', ""],
+  ['<span class="dim">then start your coding agent INSIDE the project you want attacked.</span>', ""],
+];
+
+COMMANDS.usage = () => [
+  ['<span class="bold cyanglow">USAGE — speak like an attacker</span>', ""],
+  ["", ""],
+  ['<span class="dim">in your agent, from the project root:</span>', ""],
+  ["", ""],
+  ['  <span class="white bold">/mr-robot take down my product</span>', ""],
+  ['  <span class="white bold">/mr-robot pentest this API</span>', ""],
+  ['  <span class="white bold">/mr-robot hack this app — find the way in</span>', ""],
+  ['  <span class="white bold">/mr-robot red-team the auth flow and prove the impact</span>', ""],
+  ["", ""],
+  ['<span class="dim">plain language works too:</span>', ""],
+  ['  <span class="yellow">"find critical vulnerabilities in this codebase"</span>', ""],
+  ['  <span class="yellow">"hunt for backdoors / prompt injection"</span>', ""],
+  ['  <span class="yellow">"is this production ready?"</span>', ""],
+  ["", ""],
+  ['<span class="dim">outputs:</span> <span class="cyan">findings.json</span> · <span class="cyan">REPORT.md</span> (kill chain) · <span class="cyan">verdict.json</span> (GO / NO-GO)', ""],
+];
+
+COMMANDS.phases = () => [
+  ['<span class="bold cyanglow">THE ENGAGEMENT — phases 0–6</span>', ""],
+  ["", ""],
+  tbl([
+   '<tr><th>0</th><td><span class="red">RoE</span>        target must be your project · live tests localhost-only · hard gate</td></tr>',
+   '<tr><th>1</th><td>recon       stack, entry points, gateways, LLM surfaces — attacker hypotheses seeded</td></tr>',
+   '<tr><th>2</th><td>enumerate   fingerprint → crawl → dir/param brute (ffuf, katana, arjun) → live-vs-source diff</td></tr>',
+   '<tr><th>3</th><td>hunt        SAST + secrets + deps + IaC + backdoor scan → candidates in findings.json</td></tr>',
+   '<tr><th>4</th><td>exploit     verify in source → chain → live PoCs (nuclei, sqlmap, gateway bypass)</td></tr>',
+   '<tr><th>5</th><td>post-ex     blast radius · privilege paths · detection check · cleanup verified</td></tr>',
+   '<tr><th>6</th><td>report      kill-chain narrative + CVSS + coverage ledger + <span class="bold">GO / NO-GO</span></td></tr>',
+  ]),
+  ['<span class="dim">phases 2/4/5 are active → they require your explicit confirmation, every run.</span>', ""],
+];
+
+COMMANDS.tools = () => [
+  ['<span class="bold cyanglow">ATTACK TOOLKIT — 100% free, 100% local, zero accounts, zero egress</span>', ""],
+  ["", ""],
+  ['<span class="dim">── attack (phases 2/4) ──</span>', ""],
+  '  <span class="white">ffuf</span> feroxbuster httpx katana arjun sqlmap nuclei   <span class="dim">enumeration · fuzzing · DAST</span>',
+  ['<span class="dim">── static / supply chain ──</span>', ""],
+  '  <span class="white">opengrep</span>(semgrep) gitleaks trivy osv-scanner checkov bandit gosec',
+  '  <span class="white">njsscan</span> brakeman shellcheck cppcheck',
+  ["", ""],
+  ['<span class="dim">scripts: setup-tools.sh (installs all, idempotent) · scan-all.sh (orchestrator)</span>', ""],
+  ['<span class="dim">         backdoor-scan.sh (implant hunt) · score.mjs (CVSS + verdict)</span>', ""],
+];
+
+COMMANDS.roe = () => [
+  ['<span class="bold cyanglow">RULES OF ENGAGEMENT</span> <span class="dim">(same as a professional pentest — enforced in code)</span>', ""],
+  ["", ""],
+  ['  <span class="red">✕</span> refuses third-party / unknown targets — your project, or nothing', ""],
+  ['  <span class="red">✕</span> active traffic only to <span class="white">localhost</span> — scan-all.sh --live refuses other hosts', ""],
+  ['  <span class="red">✕</span> no weaponized payloads — harmless markers only (<span class="white">echo mr-robot-poc</span>)', ""],
+  ['  <span class="red">✕</span> no persistence, no planting, no DoS — bounded probes, ≤5 req/s (nuclei sweep capped at 300s)', ""],
+  ['  <span class="red">✕</span> no data theft — stop at proving the mechanism', ""],
+  ['  <span class="green">✓</span> every active step logged to the report · every artifact removed &amp; removal verified', ""],
+  ["", ""],
+  ['  <span class="dim">your code never leaves your machine — no accounts, no API keys, no cloud.</span>', ""],
+];
+
+COMMANDS.refs = () => [
+  ['<span class="bold cyanglow">REFERENCE MAP</span> <span class="dim">(progressive disclosure — loaded on demand)</span>', ""],
+  ["", ""],
+  tbl([
+   '<tr><td class="cyan">01-recon.md</td><td class="dim">attack-surface mapping from source</td></tr>',
+   '<tr><td class="cyan">05-attack-playbook.md</td><td class="dim">enumeration · fuzzing · exploitation · chaining</td></tr>',
+   '<tr><td class="cyan">02-toolchain.md</td><td class="dim">tool matrix, install, offline fallbacks</td></tr>',
+   '<tr><td class="cyan">03a-injection.md</td><td class="dim">SQLi · cmdi · SSTI · XSS · deser · prototype pollution</td></tr>',
+   '<tr><td class="cyan">03b-auth-gateway.md</td><td class="dim">dictionary attacks · JWT · IDOR/BFLA · rate-limit · CSRF</td></tr>',
+   '<tr><td class="cyan">03c-ssrf-access-file.md</td><td class="dim">SSRF · traversal · upload webshells</td></tr>',
+   '<tr><td class="cyan">03d-supply-chain-backdoors.md</td><td class="dim">implants · install hooks · CI/CD · A09 detection gaps</td></tr>',
+   '<tr><td class="cyan">03e-business-logic.md</td><td class="dim">races · payments · API Top 10 · mass assignment</td></tr>',
+   '<tr><td class="cyan">03f-llm-agentic.md</td><td class="dim">prompt injection · excessive agency · agent memory poisoning</td></tr>',
+   '<tr><td class="cyan">03g-config-crypto-misc.md</td><td class="dim">misconfig · crypto · logging · A10 fail-open</td></tr>',
+   '<tr><td class="cyan">03h-memory-safety.md</td><td class="dim">C/C++ · Rust unsafe · Go — ASan-grade proofs</td></tr>',
+   '<tr><td class="cyan">04-report-template.md</td><td class="dim">kill-chain report + verdict rubric</td></tr>',
+  ]),
+  ['<span class="dim">catalog mapped to OWASP Top 10:2025 · WSTG v4.2 · API Top 10 · LLM/Agentic Top 10 · CWE Top 25</span>', ""],
+];
+
+COMMANDS.whoami = () => [
+  ['<span class="cyan">operator</span>@fsociety <span class="dim">— authorized attacker. scope: this repository. objective: take it down, then help them fix it.</span>', ""],
+];
+
+COMMANDS.demo = () => "DEMO";
+
+COMMANDS.clear = () => { screenEl.innerHTML = ""; return []; };
+
+COMMANDS[""] = () => [];
+
+COMMANDS.default = () => [
+  [`<span class="red">command not found:</span> <span class="white">${esc(lastCmd)}</span>  <span class="dim">— try 'help'</span>`, ""],
+];
+
+/* ---------- simulated engagement transcript ---------- */
+async function runDemo(){
+  const L = (t,c) => addLine(t,c);
+  addLine('<span class="dim">$ mr-robot take down my product</span>');
+  await sleep(350);
+  L('<span class="dim">[RoE]  target = ./ (your project) · ownership: user-confirmed · active mode: awaiting YES… </span><span class="green">granted</span>');
+  await sleep(300);
+  L('<span class="cyan">[p1 · recon]</span>    stack: FastAPI + SQLAlchemy + postgres · routes: 34 · gateways: JWT auth, RBAC(missing on /admin)');
+  await sleep(300);
+  L('<span class="cyan">[p2 · enumerate]</span> httpx fingerprint → uvicorn/0.30 · ffuf: <span class="yellow">/api/internal/debug found (not in source)</span>');
+  await sleep(300);
+  L('<span class="dim">              arjun: hidden param ?verbose= on /api/orders · katana: 312 endpoints in live surface</span>');
+  await sleep(300);
+  L('<span class="cyan">[p3 · hunt]</span>     semgrep: SQL concat in orders.py:88 · gitleaks: AWS key in .env (history) · trivy: 3 critical CVEs');
+  await sleep(300);
+  L('<span class="cyan">[p4 · exploit]</span>  /api/orders?id=1\' → SQL error → blind SQLi confirmed <span class="dim">(mr-robot-poc marker only)</span>');
+  await sleep(300);
+  L('<span class="dim">              /api/internal/debug → no auth decorator → verbose heap dump = auth-bypass</span>');
+  await sleep(300);
+  L('<span class="cyan">[p5 · post-ex]</span>  chain: debug dump leaks session keys → forge admin JWT → full account takeover');
+  await sleep(300);
+  L('<span class="dim">              detection check: none of the above appeared in app logs → A09 finding (exploited &amp; undetected)</span>');
+  await sleep(300);
+  L('<span class="cyan">[p6 · report]</span>   kill chain written → REPORT.md · 12 findings · 2 blockers');
+  await sleep(400);
+  L('<span class="red bold">VERDICT: NO-GO</span>  <span class="dim">— confirmed SQLi + auth-bypass. fix, retest, ship.</span>');
+  await sleep(250);
+  L('<span class="dim">cleanup: 0 artifacts left · all PoCs were marker-only · </span><span class="green">nothing planted</span>');
+  await sleep(200);
+  L('<span class="dim">(fictional transcript — your run writes real findings.json / REPORT.md / verdict.json)</span>');
+}
+
+/* ---------- dispatch ---------- */
+let lastCmd = "";
+const history = [];
+let histIdx = -1;
+
+async function run(raw){
+  const cmd = raw.trim();
+  lastCmd = cmd;
+  if (cmd) { history.push(cmd); histIdx = history.length; }
+  const key = cmd.toLowerCase().split(/\s+/)[0];
+  const handler = COMMANDS[key] || COMMANDS.default;
+  const out = await handler();
+  if (out === "DEMO") { await runDemo(); return; }
+  printBlock(out);
+  screenEl.scrollTop = screenEl.scrollHeight;
+}
+
+/* ---------- boot sequence ---------- */
+(async () => {
+  await sleep(250);
+  await typeLine(BANNER, "green glow banner", 3);
+  addLine("");
+  await typeLine("fsociety presents // mr-robot v1.0 — penetration-test agent skill", "cyan", 12);
+  addLine('<span class="dim">objective: take down your product — before someone else does.</span>');
+  addLine("");
+  await typeLine("[ boot ] toolchain: 16 free & local tools ......... ", "dim", 10);
+  addLine('<span class="green">[ ok ]</span> <span class="dim">no accounts · no API keys · your code never leaves this machine</span>');
+  addLine('[ boot ] rules of engagement ...................... <span class="red">enforced in code</span> <span class="dim">(localhost-only active tests)</span>');
+  addLine("");
+  addLine('type <span class="white bold">help</span> for commands · <span class="white bold">demo</span> for a simulated engagement · <span class="white bold">install</span> to get started');
+  addLine("");
+  currentInput = makePrompt();
+  currentInput.focus();
+})();
+</script>
+</body>
+</html>
