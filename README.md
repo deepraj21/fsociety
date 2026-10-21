@@ -53,8 +53,12 @@ It also triggers on plain language: *"find critical vulnerabilities in this code
 | 5 | Post-exploitation: blast radius, privilege paths, detection check (A09), cleanup + verified removal | **user confirmation** |
 | 6 | Kill-chain report + CVSS + coverage ledger + **GO / CONDITIONAL-GO / NO-GO** | — |
 
-The ~100-test attack catalog is mapped to **OWASP Top 10:2025**, **WSTG**, **OWASP API
-Top 10**, **OWASP LLM/Agentic Top 10 2025**, and **MITRE CWE Top 25** — see
+The ~120-test attack catalog is mapped to **OWASP Top 10:2025**, **WSTG**, **OWASP API
+Top 10**, **OWASP LLM/Agentic Top 10 2025**, and **MITRE CWE Top 25** — covering
+injection (SQLi, SSTI, XSS, XXE, deserialization), auth/gateway bypass, SSRF, file
+access, supply-chain backdoors, business logic & races, LLM/agentic abuse, config/crypto,
+memory safety, HTTP protocol attacks (smuggling, cache poisoning, ReDoS),
+GraphQL/WebSocket, and OAuth/OIDC — see
 [`skills/mr-robot/references/`](skills/mr-robot/references/), especially
 [`05-attack-playbook.md`](skills/mr-robot/references/05-attack-playbook.md) for the
 enumeration → exploit → chain workflow.
@@ -90,8 +94,8 @@ and always cleans up after itself.
 ```
 skills/mr-robot/
 ├── SKILL.md                 # engagement workflow: phases 0–6
-├── references/              # recon, toolchain, attack playbook, 8 catalogs, report template
-├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · score.mjs
+├── references/              # recon, toolchain, attack playbook, 11 catalogs, report template
+├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · score.mjs
 └── assets/                  # offline SAST rule pack, gitleaks config, path/param wordlists
 ```
 

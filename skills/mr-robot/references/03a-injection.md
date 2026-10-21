@@ -63,6 +63,31 @@ before recording `status: confirmed`.
 - **Prove:** a `__reduce__`/gadget that runs `echo mr-robot-poc`-equivalent (print marker)
   — never a reverse shell; the payload's *existence* + marker output proves RCE.
 
+## XML external entities (XXE) — CWE-611 (WSTG-INJT-19)
+
+Any endpoint parsing XML/SOAP/SVG/XLSX/parsers-with-DTD: `ElementTree` (pre-3.8
+`resolve_entities`), `lxml.etree.fromstring` (no `resolve_entities=False`),
+`libxml2`, `DocumentBuilder`, JAXB, `XMLInputFactory`, PHP `simplexml_load_*`.
+
+- **Detect:** XML parsers fed request bodies/params; SOAP routes; SVG/XLSX upload
+  parsed server-side; DTD/DOCTYPE in fixtures or sample XML in the repo.
+- **Verify:** does the parser resolve external entities / DTDs by default? Older
+  lxml (<2.3), Python (<3.7.1), and any explicitly `resolve_entities=True` are live.
+- **Prove (harmless, local only):**
+  1. **In-band entity:** DOCTYPE entity `&xxe;` defined as `mr-robot-poc` → echoed
+     in the response = parser resolves entities (**medium**; the mechanism is the
+     whole finding).
+  2. **File read:** entity → `file:///etc/passwd` (or repo-local marker file) →
+     contents in response = **high** (LFI-grade, CWE-22 chain).
+  3. **Blind/OOB:** parameter entity + external DTD fetched from a *local* listener
+     (`nc -l 8081`) you started — arrival of the fetch proves blind XXE; never point
+     OOB at an external host (zero-egress rule + Phase 0).
+  4. **Billion laughs (bounded!):** one nested-entity expansion sized to prove
+     quadratic growth (small, e.g. 5 levels × 10) — kill the request at first sign
+     of lag; report DoS potential without running a real bomb.
+- **Variants:** XInclude (`xi:include`), XSLT stylesheet injection (SSTI-adjacent,
+  cross-link above), SVG `xlink:href` fetches (SSRF cross-link 03c).
+
 ## Prototype pollution — CWE-1321 (WSTG-INJT-22)
 
 - **Detect:** recursive merges without key filtering: `_.merge/defaultsDeep`,
@@ -70,6 +95,10 @@ before recording `status: confirmed`.
 - **Prove:** `{"__proto__":{"mr-robot-poc":1}}` → observe polluted property on `{}`/config flag.
 
 ## HTTP-layer injection (WSTG-INJT-03/04/15/16/17)
+
+Deep protocol-level testing (smuggling/desync, cache poisoning, Host attacks,
+CRLF, ReDoS) has its own catalog — [03i-http-protocol.md](03i-http-protocol.md).
+Quick hits here:
 
 - **Host-header injection:** `Host:` override → password-reset/poisoned links.
 - **HTTP parameter pollution:** duplicate params (`?id=1&id=2`) — framework-dependent parsing.

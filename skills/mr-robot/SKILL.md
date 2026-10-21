@@ -1,6 +1,6 @@
 ---
 name: mr-robot
-description: Offensive penetration-testing agent skill for a product you own — takes the app through a real red-team engagement — recon, live endpoint enumeration and fuzzing, vulnerability hunting, exploitation, post-exploitation impact proof, then a GO / NO-GO verdict. Uses only free local open-source tools (ffuf, feroxbuster, nuclei, sqlmap, opengrep, trivy, gitleaks) and chains findings into attacker kill chains showing how the product would be taken down. Use when the user says /mr-robot, "take down my product", pentest, penetration test, red team, hack my app, find critical vulnerabilities, hunt for backdoors or prompt injection, or asks if the project is production-ready. Active exploitation only against localhost targets the user is authorized to test; refuses third-party hosts.
+description: Offensive penetration-testing agent skill for a product you own — takes the app through a real red-team engagement — recon, live endpoint enumeration and fuzzing, vulnerability hunting, exploitation, post-exploitation impact proof, then a GO / NO-GO verdict. Uses only free local open-source tools (ffuf, feroxbuster, nuclei, sqlmap, opengrep, trivy, gitleaks) and chains findings into attacker kill chains showing how the product would be taken down — covering injection, auth and gateway bypass, SSRF, backdoors, prompt injection, races, GraphQL, WebSocket, OAuth/OIDC, and HTTP protocol attacks. Use when the user says /mr-robot, "take down my product", pentest, penetration test, red team, hack my app, find critical vulnerabilities, hunt for backdoors or prompt injection, or asks if the project is production-ready. Active exploitation only against localhost targets the user is authorized to test; refuses third-party hosts.
 ---
 
 # mr-robot — penetration test: take down the product
@@ -85,7 +85,8 @@ Read [references/01-recon.md](references/01-recon.md) and produce an attack-surf
 
 Select the applicable catalog files from `references/03*.md` based on what you found —
 do not read all of them. A Django API loads 03a+03b+03c+03e; a chat app adds 03f; a C
-service adds 03h.
+service adds 03h; GraphQL or WebSocket endpoints add 03j; delegated login (OAuth/OIDC)
+adds 03k; a reverse proxy/CDN in the deploy config (nginx/traefik/envoy) adds 03i.
 
 Seed your attacker notebook with top-3 entry-point hypotheses: *if I were breaking in,
 which endpoint do I hit first, and why?*
@@ -173,7 +174,9 @@ severity first:
    [03b](references/03b-auth-gateway.md) (auth, dictionary, gateway bypass),
    [03c](references/03c-ssrf-access-file.md), [03d](references/03d-supply-chain-backdoors.md),
    [03e](references/03e-business-logic.md), [03f](references/03f-llm-agentic.md),
-   [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md).
+   [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md),
+   [03i](references/03i-http-protocol.md) (smuggling, cache, Host, ReDoS),
+   [03j](references/03j-graphql-websocket.md), [03k](references/03k-oauth-oidc.md).
 
 **4b. Live exploitation** (Phase 0 required — local instance + user confirmed):
 
@@ -198,6 +201,10 @@ it counts. Then attack the enumerated endpoints from Phase 2, guided by
   `sqlmap --batch --level 1 --risk 1 --technique T` run limited to the local DB, or a
   manual payload showing `mr-robot-poc` marker output. No dumps of real data; if test
   data would be exposed, stop at proving the mechanism.
+- **Race/TOCTOU probes** (03e): for check-then-act endpoints (transfers, coupons,
+  quota consumption), `scripts/race-probe.sh` fires one bounded concurrent burst
+  (≤20) and compares responses — divergence is the signal; uniform results are not
+  proof of safety (say so in the report).
 
 Record every active step (request, response excerpt, outcome) to the notebook and the
 report.
@@ -268,8 +275,11 @@ verdict must say so.
 | `references/03f-llm-agentic.md` | project calls an LLM/agent/RAG |
 | `references/03g-config-crypto-misc.md` | always (config, crypto, logging, error handling) |
 | `references/03h-memory-safety.md` | C/C++/Rust/Go unsafe code present |
+| `references/03i-http-protocol.md` | proxy/CDN in deploy config, cache layer, Host/reset flows |
+| `references/03j-graphql-websocket.md` | GraphQL endpoint or WebSocket/subscription surface |
+| `references/03k-oauth-oidc.md` | delegated login (OAuth/OIDC/next-auth/passport) |
 | `references/04-report-template.md` | Phase 6 — writing the report |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
-`scripts/score.mjs` · `scripts/wordlist-common-passwords.txt` · `assets/rules/local.yml` ·
-`assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`
+`scripts/race-probe.sh` · `scripts/score.mjs` · `scripts/wordlist-common-passwords.txt` ·
+`assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`

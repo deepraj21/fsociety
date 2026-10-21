@@ -18,8 +18,9 @@ For each business flow: write the *intended* sequence → break it.
 - **Workflow circumvention** (-06): jump to step 3 without 1–2 (`/api/order/confirm`
   without cart), skip email/ID verification by calling the final endpoint directly.
 - **Process timing / race** (-04): concurrent coupon-redemptions / balance transfers /
-  double-spend — send N identical requests in parallel (`xargs -P` / small script) and
-  check whether the invariant held. One extra success = confirmed (high if money/stock).
+  double-spend — `scripts/race-probe.sh` sends N identical requests in parallel
+  (≤20, localhost-only, compares responses for divergence) and checks whether the
+  invariant held. One extra success = confirmed (high if money/stock).
 - **Function-call limits** (-05): Nth-use restrictions (1 free export/month) enforced
   only client-side → call the API directly past the cap.
 - **Integrity checks** (-03): client-supplied totals/discounts/signatures
