@@ -7,11 +7,13 @@ local target. Binds 127.0.0.1 exclusively (see HTTPServer below).
 Run:  python3 app.py     →   http://127.0.0.1:8766
 Stop: Ctrl-C
 """
+import argparse
 import base64
 import hashlib
 import os
 import pickle
 import random
+import ssl
 import sqlite3
 import subprocess
 import traceback
@@ -106,6 +108,37 @@ class VulnHandler(BaseHTTPRequestHandler):
         pass
 
 
+def make_tls_context() -> ssl.SSLContext:
+    """Self-signed HTTPS for the TLS-audit rehearsal (--tls).
+
+    Cert is generated once into .tls/ (git-ignored): self-signed + long-lived
+    by design — testssl findings material for the demo, not real crypto advice.
+    """
+    tls_dir = os.path.join(BASE, ".tls")
+    cert, key = os.path.join(tls_dir, "cert.pem"), os.path.join(tls_dir, "key.pem")
+    if not (os.path.exists(cert) and os.path.exists(key)):
+        os.makedirs(tls_dir, exist_ok=True)
+        subprocess.run(
+            ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+             "-keyout", key, "-out", cert, "-days", "3650",
+             "-subj", "/CN=localhost/O=mr-robot-demo-fixture"],
+            check=True, capture_output=True,
+        )
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(cert, key)
+    return ctx
+
+
 if __name__ == "__main__":
-    print(f"[demo] intentionally vulnerable fixture on http://{HOST}:{PORT} (loopback only)")
-    HTTPServer((HOST, PORT), VulnHandler).serve_forever()
+    parser = argparse.ArgumentParser(description="intentionally vulnerable mr-robot demo fixture")
+    parser.add_argument("--tls", action="store_true",
+                        help="serve HTTPS with an auto-generated self-signed cert")
+    args = parser.parse_args()
+
+    httpd = HTTPServer((HOST, PORT), VulnHandler)
+    scheme = "http"
+    if args.tls:
+        httpd.socket = make_tls_context().wrap_socket(httpd.socket, server_side=True)
+        scheme = "https"
+    print(f"[demo] intentionally vulnerable fixture on {scheme}://{HOST}:{PORT} (loopback only)")
+    httpd.serve_forever()

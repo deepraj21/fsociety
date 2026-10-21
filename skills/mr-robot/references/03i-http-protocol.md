@@ -26,6 +26,12 @@ bypass front-door auth, leak another user's response.
   # Smuggle a marker request and watch for a 404/response to a request you never sent:
   printf 'POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 6\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nG' | nc -q 1 localhost PORT
   ```
+  Prefer the automated runner over hand-rolled probes: `scripts/desync-probe.sh <url>`
+  sends the CL.TE/TE.CL families (plain, hidden-tab, doubled, x-prefix) with marker
+  GET bodies and compares response counts *and* status sequences against the target's
+  own pipelined baseline — exit 1 = unsolicited/shifted responses (candidate desync),
+  exit 0 = uniform (expected for direct-only topology). See [03l](03l-traffic-interception.md)
+  for the interception side (topology confirmation via a local proxy).
 - **Time oracle:** smuggle `GET /slow-path HTTP/1.1` (any route that takes >2s, e.g.
   a sleep/health endpoint) in the prefix; if the *next* connection's response is
   delayed ~that long, the back-end queued your smuggled request → confirmed desync.

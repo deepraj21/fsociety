@@ -12,6 +12,10 @@ the skill at your own product.
 
 ```bash
 python3 skills/mr-robot/assets/fixture/app.py      # → http://127.0.0.1:8766
+python3 skills/mr-robot/assets/fixture/app.py --tls  # → https://127.0.0.1:8766
+                                                     #   (self-signed cert auto-generated
+                                                     #    into git-ignored .tls/ — gives
+                                                     #    the TLS audit a real target)
 ```
 
 ## Run the full rehearsal (in another terminal, repo root)
@@ -43,6 +47,7 @@ bash skills/mr-robot/scripts/retest.sh skills/mr-robot/assets/fixture/.mr-robot/
 | Go security + staticcheck (gosec) | `main.go` / `go.mod` |
 | Stack fingerprint for tagged nuclei runs | all of the above |
 | Live DAST + localhost port sweep | boot `app.py` → `--live` |
+| TLS audit (testssl) — self-signed cert, no HSTS | boot `app.py --tls` → `--live https://…` |
 
 `.mr-robot/` (scan outputs) is git-ignored. After your rehearsal, stop the server
 with Ctrl-C — nothing persists outside this directory.

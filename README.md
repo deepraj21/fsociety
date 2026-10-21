@@ -96,8 +96,8 @@ the coverage ledger.
 ## Zero cost, zero egress
 
 Everything runs on your machine with open-source tools (ffuf, feroxbuster, httpx,
-katana, arjun, nuclei, sqlmap, nmap, Opengrep, Trivy, Gitleaks, Bandit, gosec,
-staticcheck, hadolint, kube-linter, jwt_tool, …). **No
+katana, arjun, nuclei, sqlmap, nmap, testssl, mitmproxy, Opengrep, Trivy, Gitleaks,
+Bandit, gosec, staticcheck, hadolint, kube-linter, jwt_tool, …). **No
 accounts, no API keys, no code ever leaves your machine.** `scripts/setup-tools.sh`
 installs what's missing and skips gracefully what it can't.
 
@@ -108,15 +108,17 @@ same rules of engagement as a professional pentest: passive source review is alw
 allowed, active testing requires your explicit confirmation and is enforced to localhost
 in code (`scan-all.sh --live` refuses non-loopback hosts). It refuses third-party
 targets, uses non-destructive proof-of-concept markers only, never plants persistence,
-and always cleans up after itself.
+and always cleans up after itself. Traffic interception is loopback-only and
+capture-first (audit your own HAR exports, or proxy a localhost app) — **LAN MITM
+(ARP spoofing, SSL stripping, sniffing third-party traffic) is out of scope.**
 
 ## Layout
 
 ```
 skills/mr-robot/
 ├── SKILL.md                 # engagement workflow: phases 0–6
-├── references/              # recon, toolchain, attack playbook, 11 catalogs, report template
-├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · retest.sh · score.mjs · sarif.mjs
+├── references/              # recon, toolchain, attack playbook, 12 catalogs, report template
+├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · har-audit.mjs · retest.sh · score.mjs · sarif.mjs
 └── assets/                  # offline SAST rule pack, gitleaks config, path/param wordlists
 ```
 

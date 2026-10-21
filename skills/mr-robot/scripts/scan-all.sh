@@ -329,13 +329,46 @@ if [ -n "$LIVE_URL" ]; then
     case "$nmap_host" in
       0.0.0.0) nmap_host="127.0.0.1" ;;
     esac
-    if nmap -Pn -T4 --top-ports 200 -oX "$OUT/nmap.xml" -PE -n "$nmap_host" >>"$LOG.nmap" 2>&1 \
+    if nmap -Pn -T4 -sV --top-ports 200 -oX "$OUT/nmap.xml" -PE -n "$nmap_host" >>"$LOG.nmap" 2>&1 \
        && [ -s "$OUT/nmap.xml" ]; then
-      ran "nmap (localhost top-200 ports)"
+      ran "nmap (localhost top-200 ports, -sV)"
     else
       failrun "nmap" "exit $?"
     fi
   else skip "nmap"; fi
+
+  # ---- TLS audit (testssl) — https targets only
+  # Bounded by the nuclei-style background watchdog: testssl's own
+  # --connect-timeout needs the GNU `timeout` binary (absent on stock macOS)
+  # and FATALs without it, so wall-time is enforced from here instead.
+  case "$LIVE_URL" in
+    https://*)
+      if have testssl; then
+        tls_t="$(printf '%s' "$LIVE_URL" | sed -E 's#^https://##; s#/.*$##')"
+        echo "[scan] TLS audit: $tls_t (protocols, server defaults, headers, preference)"
+        testssl --quiet --color 0 --jsonfile "$OUT/testssl.json" -p -S -h -P "$tls_t" \
+          >>"$LOG.testssl" 2>&1 &
+        tsc_pid=$!
+        (
+          sleep 120
+          kill -TERM "$tsc_pid" 2>/dev/null
+          sleep 5
+          kill -KILL "$tsc_pid" 2>/dev/null
+        ) &
+        tsc_wd=$!
+        wait "$tsc_pid"; tsc_rc=$?
+        kill "$tsc_wd" 2>/dev/null
+        wait "$tsc_wd" 2>/dev/null
+        if [ -s "$OUT/testssl.json" ]; then
+          ran "testssl (TLS audit, $tls_t)"
+        elif [ "$tsc_rc" -eq 143 ] || [ "$tsc_rc" -eq 137 ]; then
+          failrun "testssl" "timed out after 120s ($tls_t)"
+        else
+          failrun "testssl" "exit $tsc_rc ($tls_t)"
+        fi
+      else skip "testssl (not installed — run setup-tools.sh)"; fi ;;
+    *) skip "testssl (target is plain http — nothing to audit)" ;;
+  esac
 
   # ---- nuclei DAST — stack-aware template tag selection
   if have nuclei; then
@@ -704,10 +737,33 @@ if os.path.exists(p) and os.path.getsize(p) > 0:
                 pid = int(port.get("portid", 0))
                 service = port.find("service")
                 svc_name = service.get("name", "") if service is not None else ""
+                svc_extra = ""
+                if service is not None:
+                    _prod, _ver = service.get("product") or "", service.get("version") or ""
+                    if _prod: svc_extra = f" — {_prod} {_ver}".rstrip()
                 s = "info" if pid in expected else "medium"
                 note_str = "expected" if pid in expected else "unexpected — verify it is intentional"
-                add("nmap", f"Port {pid}/{port.get('protocol')} open ({svc_name}) — {note_str}",
+                add("nmap", f"Port {pid}/{port.get('protocol')} open ({svc_name}{svc_extra}) — {note_str}",
                     None, None, s, None, None, None, {"engine": "recon"})
+    except Exception:
+        pass
+
+# --- testssl (TLS audit — https targets) -------------------------------------------
+p = os.path.join(out, "testssl.json")
+if os.path.exists(p) and os.path.getsize(p) > 0:
+    try:
+        entries = json.load(open(p))
+        # operational ids describe OUR runner, not the target — never findings
+        _op_ids = {"engine_problem", "scanProblem", "scanTime"}
+        if isinstance(entries, list):
+            for e in entries:
+                if not isinstance(e, dict): continue
+                if e.get("id") in _op_ids: continue
+                _e_sev = str(e.get("severity") or "").upper()
+                if _e_sev not in ("CRITICAL", "HIGH", "MEDIUM", "LOW"): continue
+                add("testssl", f"{e.get('id')}: {str(e.get('finding'))[:200]}",
+                    None, None, _e_sev.lower(), None, None,
+                    f"ip {e.get('ip')} port {e.get('port')}", {"engine": "network"})
     except Exception:
         pass
 

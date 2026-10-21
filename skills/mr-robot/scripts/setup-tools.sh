@@ -318,6 +318,34 @@ install_sqlmap() {
 }
 ensure sqlmap sqlmap install_sqlmap
 
+# TLS audit engine — used by the scan-all TLS stage (https:// targets only).
+# The brew formula ships its binary as `testssl.sh`, so always wrap it under
+# the stable command name `testssl` (brew path first, git clone as fallback).
+install_testssl() {
+  local src=""
+  if [ "$HAVE_BREW" = 1 ] && brew_install testssl; then
+    src="$(brew --prefix testssl 2>/dev/null)/bin/testssl.sh"
+    [ -x "$src" ] || src=""
+  fi
+  if [ -z "$src" ]; then
+    command -v git >/dev/null 2>&1 || return 1
+    local dest="$HOME/.local/share/testssl.sh"
+    [ -d "$dest" ] || quiet git clone --depth 1 https://github.com/drwetter/testssl.sh.git "$dest" || return 1
+    src="$dest/testssl.sh"
+  fi
+  [ -x "$src" ] || return 1
+  mkdir -p "$HOME/.local/bin"
+  printf '#!/usr/bin/env bash\nexec "%s" "$@"\n' "$src" > "$HOME/.local/bin/testssl"
+  chmod +x "$HOME/.local/bin/testssl"
+  PATH="$HOME/.local/bin:$PATH"
+  have testssl
+}
+ensure testssl testssl install_testssl
+
+# Interception proxy (record/replay workflow in references/03l) — optional but
+# nice: the HAR audit + replay flow works with browser exports even without it.
+ensure mitmproxy mitmproxy 'brew_install mitmproxy' 'pipx_install mitmproxy'
+
 # ---------------------------------------------------------------- report
 export PATH="$HOME/.local/bin:$PATH"
 printf '\n[mr-robot:setup] result:\n'

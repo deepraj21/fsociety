@@ -56,6 +56,12 @@ Real engagements start with scope. This one has the same shape, and you do not b
 target whose ownership is unclear; any ask for weaponized payloads, persistence,
 data theft, or denial-of-service beyond a single bounded check.
 
+**Interception boundary (Phase 0):** traffic interception is loopback-only and
+capture-first — audit HAR files the user already owns (passive, zero contact),
+or proxy a localhost app they confirmed. **LAN MITM is out of scope:** no ARP
+spoofing, no SSL stripping, no sniffing traffic that isn't yours — interception
+on a network you don't own/administer is unauthorized access.
+
 **Rules of engagement (active phase):**
 - Non-destructive: no deletes, no writes to the target's data, no `rm`, no resets.
 - PoC impact proof = harmless marker only (`id`, `whoami`, `echo mr-robot-poc`,
@@ -91,7 +97,8 @@ Read [references/01-recon.md](references/01-recon.md) and produce an attack-surf
 Select the applicable catalog files from `references/03*.md` based on what you found —
 do not read all of them. A Django API loads 03a+03b+03c+03e; a chat app adds 03f; a C
 service adds 03h; GraphQL or WebSocket endpoints add 03j; delegated login (OAuth/OIDC)
-adds 03k; a reverse proxy/CDN in the deploy config (nginx/traefik/envoy) adds 03i.
+adds 03k; a reverse proxy/CDN in the deploy config (nginx/traefik/envoy) adds 03i;
+a browser/proxy HAR capture to review (or a TLS-terminating hop) adds 03l.
 
 Seed your attacker notebook with top-3 entry-point hypotheses: *if I were breaking in,
 which endpoint do I hit first, and why?*
@@ -181,7 +188,8 @@ severity first:
    [03e](references/03e-business-logic.md), [03f](references/03f-llm-agentic.md),
    [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md),
    [03i](references/03i-http-protocol.md) (smuggling, cache, Host, ReDoS),
-   [03j](references/03j-graphql-websocket.md), [03k](references/03k-oauth-oidc.md).
+   [03j](references/03j-graphql-websocket.md), [03k](references/03k-oauth-oidc.md),
+   [03l](references/03l-traffic-interception.md) (HAR audit, interception, cookie/token leakage).
 
 **4b. Live exploitation** (Phase 0 required — local instance + user confirmed):
 
@@ -213,6 +221,16 @@ guided by
   quota consumption), `scripts/race-probe.sh` fires one bounded concurrent burst
   (≤20) and compares responses — divergence is the signal; uniform results are not
   proof of safety (say so in the report).
+- **Desync probes** (03i/03l): if a proxy sits in the path, `scripts/desync-probe.sh`
+  sends 11 bounded framing probes (CL.TE/TE.CL families, marker GET bodies only)
+  and compares response counts *and* status sequences against the target's own
+  baseline — unsolicited or shifted responses are the signature. Direct-only
+  topology is an expected uniform result; say so rather than overclaiming.
+- **Traffic audit** (03l): a browser/mitmproxy HAR capture feeds
+  `scripts/har-audit.mjs` — passive, zero contact — for tokens-in-URL, cleartext
+  credentials, cookie flags, CORS, and version/stack leaks; `--append` merges the
+  results into the run's findings.json for scoring/SARIF. Never commit or share
+  raw captures (they contain live credentials).
 
 Record every active step (request, response excerpt, outcome) to the notebook and the
 report.
@@ -331,11 +349,13 @@ reading the patch alone.
 | `references/03i-http-protocol.md` | proxy/CDN in deploy config, cache layer, Host/reset flows |
 | `references/03j-graphql-websocket.md` | GraphQL endpoint or WebSocket/subscription surface |
 | `references/03k-oauth-oidc.md` | delegated login (OAuth/OIDC/next-auth/passport) |
+| `references/03l-traffic-interception.md` | HAR capture to audit, proxy in path, TLS/cookie/token leakage questions |
 | `references/04-report-template.md` | Phase 6 — writing the report |
 | `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |
 | `references/07-ci-sarif.md` | CI gates, SARIF export, KEV enrichment |
 | `assets/fixture/` | no target at hand — bundled vulnerable demo app (rehearsal) |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
-`scripts/race-probe.sh` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/sarif.mjs` · `scripts/wordlist-common-passwords.txt` ·
+`scripts/race-probe.sh` · `scripts/desync-probe.sh` · `scripts/har-audit.mjs` ·
+`scripts/retest.sh` · `scripts/score.mjs` · `scripts/sarif.mjs` · `scripts/wordlist-common-passwords.txt` ·
 `assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`
