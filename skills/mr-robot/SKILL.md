@@ -1,6 +1,6 @@
 ---
 name: mr-robot
-description: Offensive penetration-testing agent skill for a product you own — takes the app through a real red-team engagement — recon, live endpoint enumeration and fuzzing, vulnerability hunting, exploitation, post-exploitation impact proof, then a GO / NO-GO verdict. Uses only free local open-source tools (ffuf, feroxbuster, nuclei, sqlmap, opengrep, trivy, gitleaks) and chains findings into attacker kill chains showing how the product would be taken down — covering injection, auth and gateway bypass, SSRF, backdoors, prompt injection, races, GraphQL, WebSocket, OAuth/OIDC, and HTTP protocol attacks. Use when the user says /mr-robot, "take down my product", pentest, penetration test, red team, hack my app, find critical vulnerabilities, hunt for backdoors or prompt injection, or asks if the project is production-ready. Active exploitation only against localhost targets the user is authorized to test; refuses third-party hosts.
+description: Offensive penetration-testing agent skill for a product you own — takes the app through a real red-team engagement — recon, live endpoint enumeration and fuzzing, vulnerability hunting, exploitation, post-exploitation impact proof, then a GO / NO-GO verdict, and retests fixes to prove remediation. Uses only free local open-source tools (ffuf, feroxbuster, nuclei, sqlmap, opengrep, trivy, gitleaks) and chains findings into attacker kill chains showing how the product would be taken down — covering injection, auth and gateway bypass, SSRF, backdoors, prompt injection, races, GraphQL, WebSocket, OAuth/OIDC, and HTTP protocol attacks. Use when the user says /mr-robot, "take down my product", pentest, penetration test, red team, hack my app, find critical vulnerabilities, hunt for backdoors or prompt injection, retest or verify a fix, or asks if the project is production-ready. Active exploitation only against localhost targets the user is authorized to test; refuses third-party hosts.
 ---
 
 # mr-robot — penetration test: take down the product
@@ -263,6 +263,46 @@ verdict must say so.
 
 ---
 
+## Phase 7 — Remediation & retest (close the loop)
+
+A finding is only closed when a retest proves it. Never declare a fix "done" from
+reading the patch alone.
+
+1. **Propose the smallest effective fix** for each confirmed finding — guidance per
+   finding family in [references/06-remediation.md](references/06-remediation.md).
+   Edit the user's code only with their explicit approval (RoE applies to changes,
+   not just tests); never touch anything beyond what the fix needs, and keep the
+   scanner's own remediation notes as the source of truth when they exist.
+2. **Re-run the same scope against the same target** after the fixes land:
+
+   ```bash
+   bash skills/mr-robot/scripts/retest.sh <baseline-run>/findings.json [target-dir] [--live <url> | --passive]
+   ```
+
+   It re-runs `scan-all.sh` (same mode as the baseline by default), fingerprints
+   every finding (`source_tool` + title + file, normalized for absolute paths and
+   line drift), writes `retest.json` next to the new run, and classifies:
+
+   | class | meaning |
+   |---|---|
+   | `fixed` | absent from the retest **and** its source tool ran ok (or its file is gone from the target) |
+   | `persisting` | still present (severity changes are called out) |
+   | `unknown` | absent, but its tool was skipped/failed in the retest → **no fix credit** |
+   | `new` | not in the baseline — a regression or a previously-unscanned surface |
+
+   Exit codes: `0` everything fixed & nothing new · `1` leftovers (CI-gateable) ·
+   `2` usage/run error. Coverage deltas (tools not ok in the retest) are printed
+   and recorded — an `unknown` is a coverage gap, not a success.
+3. **Fold the evidence back:** mark retest-`fixed` findings `status: "fixed"` in the
+   baseline `findings.json` (keep them in the coverage ledger with the retest
+   pointer), leave persisting ones untouched, triage `new` findings like any other,
+   then re-run `score.mjs` — the verdict may upgrade, but only on this evidence.
+4. **Update REPORT.md §7** with the `retest.json` path and the counts. Repeat the
+   cycle until retest exits 0 or the user accepts the remaining risk explicitly —
+   record the acceptance in the report rather than quieting findings.
+
+---
+
 ## File map (progressive disclosure — load on demand)
 
 | File | Load when |
@@ -282,7 +322,8 @@ verdict must say so.
 | `references/03j-graphql-websocket.md` | GraphQL endpoint or WebSocket/subscription surface |
 | `references/03k-oauth-oidc.md` | delegated login (OAuth/OIDC/next-auth/passport) |
 | `references/04-report-template.md` | Phase 6 — writing the report |
+| `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
-`scripts/race-probe.sh` · `scripts/score.mjs` · `scripts/wordlist-common-passwords.txt` ·
+`scripts/race-probe.sh` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/wordlist-common-passwords.txt` ·
 `assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`

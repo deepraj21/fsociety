@@ -49,7 +49,12 @@ from findings.json → scanners[] (failed/skipped are here — disclose gaps)
 ID — reason (not reachable / false positive / needs runtime confirmation).
 
 ## 7. Retest plan
-Ordered checklist mapping each blocker → verification command.
+Ordered checklist mapping each blocker → verification command. The command is
+always the retest run itself once fixes land:
+`bash skills/mr-robot/scripts/retest.sh <baseline-run>/findings.json [target] [--live http://localhost:PORT]`
+— record the resulting `retest.json` path and counts (fixed/persisting/unknown/new)
+here after each cycle; a finding's row above gets `status: fixed` only with that
+evidence.
 
 ## 8. Standards crosswalk
 OWASP Top 10:2025 · WSTG v4.2 IDs · API Top 10 · LLM/Agentic Top 10 · CWE Top 25 —

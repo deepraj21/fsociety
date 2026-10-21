@@ -462,7 +462,8 @@ if isinstance(d, dict):
         conf = str(ex.get("severity", "")).lower()
         s = sev(impact) if impact and str(impact).lower() in SEVS or (impact and str(impact).lower()=="critical") \
             else {"error": "medium", "warning": "low", "info": "info"}.get(conf, "low")
-        add(m.get("check_id", "sast"), ex.get("message", "SAST finding"),
+        # source_tool = the scanner (retest diffs match on it); rule id goes in the title
+        add("semgrep", f"{m.get('check_id', 'sast')}: {ex.get('message', 'SAST finding')}",
             m.get("path"), (m.get("start") or {}).get("line"), s,
             cwe_of(meta.get("cwe")), owasp_of(meta.get("owasp")),
             None, {"engine": "sast"})
@@ -550,13 +551,18 @@ if isinstance(d, list):
             None, None, None, {"engine": "lint"})
 
 # --- checkov -------------------------------------------------------------------
+# checkov --output json emits a LIST of per-framework results when several
+# frameworks match (k8s + Dockerfile …) and a bare DICT when only one does.
 d = load("checkov.json")
-if isinstance(d, dict):
-    for r in (d.get("results") or {}).get("failed_checks", []) or []:
-        add("checkov", f"[iac] {r.get('check_id')} {r.get('check_name')}",
-            r.get("file_path"), r.get("start_line"), r.get("severity") or "medium",
-            owasp_of(r.get("check_id")), "A02:2025-Security-Misconfiguration",
-            f"resource: {r.get('resource')}", {"engine": "iac"})
+if isinstance(d, dict): d = [d]
+if isinstance(d, list):
+    for ent in d:
+        if not isinstance(ent, dict): continue
+        for r in (ent.get("results") or {}).get("failed_checks", []) or []:
+            add("checkov", f"[iac] {r.get('check_id')} {r.get('check_name')}",
+                r.get("file_path"), r.get("start_line"), r.get("severity") or "medium",
+                owasp_of(r.get("check_id")), "A02:2025-Security-Misconfiguration",
+                f"resource: {r.get('resource')}", {"engine": "iac"})
 
 # --- brakeman -------------------------------------------------------------------
 d = load("brakeman.json")

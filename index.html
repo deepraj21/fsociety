@@ -168,7 +168,7 @@ COMMANDS.help = () => [
   tbl([
    '<tr><th>install</th><td>add the skill to your agent (npx / skills.sh)</td></tr>',
    '<tr><th>usage</th><td>how to invoke it — slash style &amp; natural language</td></tr>',
-   '<tr><th>phases</th><td>the 0–6 engagement workflow</td></tr>',
+   '<tr><th>phases</th><td>the 0–7 engagement workflow</td></tr>',
    '<tr><th>tools</th><td>24 free &amp; local tools in the attack toolkit</td></tr>',
    '<tr><th>roe</th><td>rules of engagement — what it will never do</td></tr>',
    '<tr><th>demo</th><td>simulated engagement: "take down my product"</td></tr>',
@@ -207,7 +207,7 @@ COMMANDS.usage = () => [
 ];
 
 COMMANDS.phases = () => [
-  ['<span class="bold cyanglow">THE ENGAGEMENT — phases 0–6</span>', ""],
+  ['<span class="bold cyanglow">THE ENGAGEMENT — phases 0–7</span>', ""],
   ["", ""],
   tbl([
    '<tr><th>0</th><td><span class="red">RoE</span>        target must be your project · live tests localhost-only · hard gate</td></tr>',
@@ -217,6 +217,7 @@ COMMANDS.phases = () => [
    '<tr><th>4</th><td>exploit     verify in source → chain → live PoCs (nuclei, sqlmap, gateway bypass)</td></tr>',
    '<tr><th>5</th><td>post-ex     blast radius · privilege paths · detection check · cleanup verified</td></tr>',
    '<tr><th>6</th><td>report      kill-chain narrative + CVSS + coverage ledger + <span class="bold">GO / NO-GO</span></td></tr>',
+   '<tr><th>7</th><td>retest      fix guidance → re-run scan-all → diff vs baseline: fixed / persisting / new</td></tr>',
   ]),
   ['<span class="dim">phases 2/4/5 are active → they require your explicit confirmation, every run.</span>', ""],
 ];
@@ -232,7 +233,7 @@ COMMANDS.tools = () => [
   '  <span class="white">nmap</span>(localhost sweep) jwt_tool eslint-plugin-security',
   ["", ""],
   ['<span class="dim">scripts: setup-tools.sh (installs all, idempotent) · scan-all.sh (orchestrator, parallel)</span>', ""],
-  ['<span class="dim">         backdoor-scan.sh (implant hunt) · race-probe.sh (TOCTOU) · score.mjs (CVSS + verdict)</span>', ""],
+  ['<span class="dim">         backdoor-scan.sh (implant hunt) · race-probe.sh (TOCTOU) · retest.sh (fix proof) · score.mjs (CVSS + verdict)</span>', ""],
 ];
 
 COMMANDS.roe = () => [
