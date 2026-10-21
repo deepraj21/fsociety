@@ -1,0 +1,6 @@
+# Scanned statically for known-vulnerable versions (osv-scanner / trivy) —
+# NOT required to boot app.py (stdlib only). Versions pinned to releases with
+# published advisories so the demo produces real supply-chain findings.
+flask==3.0.0
+requests==2.31.0
+pyyaml==5.3.1

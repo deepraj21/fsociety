@@ -507,21 +507,32 @@ if isinstance(d, dict):
                 "CWE-798", None, (sres.get("Category") or ""), {"engine": "secrets"})
 
 # --- osv-scanner ---------------------------------------------------------------
+# v2 (osv-scanner >= 2): results[].{source:{path}, packages[]:
+#   {package:{name,version}, groups[], vulnerabilities:[osv records]}}
+# v1 tolerated: results[].{path, packages[].{package, vulns[]}}
 d = load("osv.json")
 if isinstance(d, dict):
     for group in d.get("results", []) or []:
-        path = group.get("path")
+        path = (group.get("source") or {}).get("path") or group.get("path")
         for pkg in group.get("packages", []) or []:
-            pname = (pkg.get("package") or {}).get("name")
-            for v in pkg.get("vulns", []) or []:
-                s = "medium"
+            pmeta = pkg.get("package") or {}
+            pname, pver = pmeta.get("name"), pmeta.get("version")
+            for v in (pkg.get("vulnerabilities") or pkg.get("vulns") or []):
+                s, vec = "medium", None
                 for sv in v.get("severity", []) or []:
+                    if str(sv.get("type", "")).startswith("CVSS") and sv.get("score"):
+                        vec = sv.get("score")
                     dbsev = (sv.get("database_specific") or {}).get("severity")
-                    if dbsev: s = sev(dbsev); break
-                add("osv-scanner", f"{v.get('id')} — {v.get('summary') or v.get('details','')[:80]}",
+                    if dbsev: s = sev(dbsev, s); break
+                extra = {"engine": "sca"}
+                if vec and str(vec).startswith("CVSS:3."):
+                    extra["cvss_vector"] = str(vec)   # score.mjs computes the real base score
+                add("osv-scanner",
+                    f"{v.get('id')} — {v.get('summary') or str(v.get('details') or '')[:80]}",
                     path, None, s, None, None,
-                    f"package {pname}; aliases {', '.join((v.get('aliases') or [])[:4])}",
-                    {"engine": "sca"})
+                    f"package {pname}{(' ' + pver) if pver else ''}; "
+                    f"aliases {', '.join((v.get('aliases') or [])[:4])}",
+                    extra)
 
 # --- bandit --------------------------------------------------------------------
 d = load("bandit.json")

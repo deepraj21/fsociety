@@ -46,6 +46,21 @@ Then, with your coding agent started **inside the project you want attacked**:
 It also triggers on plain language: *"find critical vulnerabilities in this codebase"*,
 *"hunt for backdoors / prompt injection"*, *"is this production ready?"*.
 
+## Demo target (practice safely)
+
+No target yet? The skill ships an **intentionally vulnerable** fixture you can boot
+locally — Python stdlib only, zero installs, binds `127.0.0.1:8766`:
+
+```bash
+python3 skills/mr-robot/assets/fixture/app.py
+# then, in another terminal — full rehearsal: scan → --live → verdict → fix → retest
+bash skills/mr-robot/scripts/scan-all.sh --live http://127.0.0.1:8766 skills/mr-robot/assets/fixture
+```
+
+It plants the classic lanes — command/SQL/code injection, path traversal, weak
+crypto, pickle, fake secrets, vulnerable deps, insecure Dockerfile/k8s manifests,
+Go security bugs — so every scanner in the toolchain has something real to find.
+
 ## The engagement
 
 | Phase | What happens | Gate |

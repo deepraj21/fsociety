@@ -1,0 +1,6 @@
+{
+  "name": "mr-robot-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Intentionally vulnerable demo target for the mr-robot skill (no runtime deps)"
+}

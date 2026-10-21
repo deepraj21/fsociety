@@ -1,0 +1,22 @@
+# INTENTIONALLY WEAK — demo target for kube-linter / checkov / trivy.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: demo-web}
+  template:
+    metadata:
+      labels: {app: demo-web}
+    spec:
+      serviceAccountName: default
+      containers:
+        - name: web
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true

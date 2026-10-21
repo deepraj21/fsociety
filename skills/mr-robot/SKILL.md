@@ -31,6 +31,11 @@ active exploitation is technically confined to localhost (Phase 0).
 2. `REPORT.md` — the kill-chain narrative: how you got in, what it buys, how to fix
 3. `verdict.json` — **GO / CONDITIONAL-GO / NO-GO** production gate
 
+**No target at hand?** `assets/fixture/` is a bundled intentionally-vulnerable demo
+app (Python stdlib only, binds `127.0.0.1:8766` — see its README) — boot it for a
+full rehearsal: scan → `--live` → verdict → fix → retest, before pointing the skill
+at your own product.
+
 ---
 
 ## Phase 0 — Rules of engagement (hard, non-negotiable)
@@ -329,6 +334,7 @@ reading the patch alone.
 | `references/04-report-template.md` | Phase 6 — writing the report |
 | `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |
 | `references/07-ci-sarif.md` | CI gates, SARIF export, KEV enrichment |
+| `assets/fixture/` | no target at hand — bundled vulnerable demo app (rehearsal) |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
 `scripts/race-probe.sh` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/sarif.mjs` · `scripts/wordlist-common-passwords.txt` ·
