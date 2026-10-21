@@ -21,8 +21,10 @@ if your judgment differs, adjust findings.json and re-run score.mjs, then explai
 - Catalogs exercised: 03a ✓ 03b ✓ 03c ✓ 03d ✓ 03e ✓ 03f ✓ 03g ✓ 03h ✓/–
 - Active steps performed (every request you sent, in order) — this is the audit trail
 
-## 3. Attack paths
-Ranked chains (source of low findings → end impact). Each: narrative, steps, end tag.
+## 3. Kill chain & attack paths
+The engagement narrative: ordered steps from first probe to final impact (enumerated
+endpoint → tested → foothold → chain → what it buys), each with requests/responses.
+Rank chains by end-state impact. Low findings that don't chain get one line here too.
 
 ## 4. Findings
 For each confirmed finding, in CVSS order:

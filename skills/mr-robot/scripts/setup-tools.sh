@@ -208,6 +208,61 @@ install_nuclei() {
 }
 ensure nuclei nuclei install_nuclei
 
+# ------------------------------------------------- active offensive toolkit (Phase 2/4)
+# Enumeration & live exploitation — all free OSS, same degrade-gracefully contract.
+install_ffuf() {
+  if [ "$HAVE_BREW" = 1 ]; then brew_install ffuf && return 0; fi
+  go_install github.com/ffuf/ffuf/v2@latest || return 1
+  PATH="$(go env GOPATH 2>/dev/null)/bin:$PATH"
+  have ffuf
+}
+ensure ffuf ffuf install_ffuf
+
+install_ferox() {
+  if [ "$HAVE_BREW" = 1 ]; then brew_install feroxbuster && return 0; fi
+  if have cargo; then quiet cargo install feroxbuster && PATH="$HOME/.cargo/bin:$PATH" && have feroxbuster && return 0; fi
+  return 1
+}
+ensure feroxbuster feroxbuster install_ferox
+
+install_httpx() {
+  # ProjectDiscovery httpx — go install first (plain `brew install httpx` may hit the
+  # unrelated Python HTTP library); fall back to their tap.
+  go_install github.com/projectdiscovery/httpx/cmd/httpx@latest && {
+    PATH="$(go env GOPATH 2>/dev/null)/bin:$PATH"; have httpx && return 0; }
+  [ "$HAVE_BREW" = 1 ] && quiet brew install projectdiscovery/httpx/httpx && hash -r && have httpx && return 0
+  have httpx
+}
+ensure httpx httpx install_httpx
+
+install_katana() {
+  go_install github.com/projectdiscovery/katana/cmd/katana@latest && {
+    PATH="$(go env GOPATH 2>/dev/null)/bin:$PATH"; have katana && return 0; }
+  [ "$HAVE_BREW" = 1 ] && quiet brew install katana && hash -r && have katana && return 0
+  have katana
+}
+ensure katana katana install_katana
+
+install_arjun() {
+  pipx_install arjun || pip3_install arjun || return 1
+  PATH="$HOME/.local/bin:$PATH"
+  have arjun
+}
+ensure arjun arjun install_arjun
+
+install_sqlmap() {
+  if [ "$HAVE_BREW" = 1 ]; then brew_install sqlmap && return 0; fi
+  command -v git >/dev/null 2>&1 || return 1
+  local dest="$HOME/.local/share/sqlmap"
+  [ -d "$dest" ] || quiet git clone --depth 1 https://github.com/sqlmapproject/sqlmap.git "$dest" || return 1
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$dest/sqlmap.py" "$HOME/.local/bin/sqlmap"
+  chmod +x "$dest/sqlmap.py" 2>/dev/null || true
+  PATH="$HOME/.local/bin:$PATH"
+  have sqlmap
+}
+ensure sqlmap sqlmap install_sqlmap
+
 # ---------------------------------------------------------------- report
 export PATH="$HOME/.local/bin:$PATH"
 printf '\n[mr-robot:setup] result:\n'

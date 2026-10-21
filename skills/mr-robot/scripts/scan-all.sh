@@ -218,10 +218,41 @@ else skip "cppcheck"; fi
 if [ -n "$LIVE_URL" ]; then
   echo "[scan] step 2/3 — active DAST against $LIVE_URL (loopback only)"
   if have nuclei; then
-    nuclei -u "$LIVE_URL" -severity critical,high,medium -silent -jsonl-export "$OUT/nuclei.jsonl" \
-      -rate-limit 5 -c 2 >>"$LOG" 2>&1
-    rc=$?
-    if [ "$rc" -le 1 ]; then ran "nuclei (live, $LIVE_URL)"; else failrun "nuclei" "exit $rc"; fi
+    # first run needs the community template pack — warm it once (downloads RULES
+    # only, never your code). Subsequent runs are fully local.
+    NUC_TEMPLATES="${NUCLEI_TEMPLATES_DIR:-$HOME/nuclei-templates}"
+    if [ ! -d "$NUC_TEMPLATES" ]; then
+      echo "[scan] warming nuclei templates (one-time download)..."
+      nuclei -update-templates >>"$LOG" 2>&1 || true
+    fi
+    nuc_rc=0
+    # localhost: 25 rps / 5 workers is a bounded, minutes-scale sweep of the
+    # community pack — safe against the user's own instance.
+    NUC_CMD=(nuclei -u "$LIVE_URL" -severity critical,high,medium -silent -duc \
+             -jsonl-export "$OUT/nuclei.jsonl" -rate-limit 25 -c 5)
+    # Portable 300s hard cap: background the sweep + watchdog kill. Signal-based
+    # wrappers (GNU timeout / perl alarm) don't work here — nuclei (Go) ignores
+    # SIGALRM and GNU timeout doesn't exist on stock macOS. SIGTERM/SIGKILL do work.
+    "${NUC_CMD[@]}" >>"$LOG" 2>&1 &
+    nuc_pid=$!
+    (
+      sleep 300
+      kill -TERM "$nuc_pid" 2>/dev/null
+      sleep 5
+      kill -KILL "$nuc_pid" 2>/dev/null
+    ) &
+    nuc_wd=$!
+    wait "$nuc_pid"; nuc_rc=$?
+    kill "$nuc_wd" 2>/dev/null
+    wait "$nuc_wd" 2>/dev/null
+    # 143 = SIGTERM (watchdog), 137 = SIGKILL (watchdog, escalated)
+    if [ "$nuc_rc" -eq 143 ] || [ "$nuc_rc" -eq 137 ]; then
+      failrun "nuclei" "timed out after 300s (partial results kept if any)"
+    elif [ "$nuc_rc" -le 1 ]; then
+      ran "nuclei (live, $LIVE_URL)"
+    else
+      failrun "nuclei" "exit $nuc_rc"
+    fi
   else skip "nuclei"; fi
 else
   echo "[scan] step 2/3 — active DAST skipped (passive mode; re-run with --live http://localhost:PORT)"

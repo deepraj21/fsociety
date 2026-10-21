@@ -1,4 +1,4 @@
-# 02 — Toolchain: free, local, zero-account scanners
+# 02 — Toolchain: free, local, zero-account scanners & attack tools
 
 Everything mr-robot uses is open-source and runs on the operator's machine. **No
 accounts, no API keys, no code egress.** `scripts/setup-tools.sh` installs what it can
@@ -23,6 +23,23 @@ a crash.
 | C/C++ | **Cppcheck** | memory/buffer smells | GPL-3.0 | C/C++ |
 | DAST (active) | **Nuclei** + community templates | live endpoint vulns | MIT | HTTP targets |
 | DAST (active, optional) | **OWASP ZAP** baseline (Docker) | full passive+active crawl | Apache-2.0 | HTTP targets |
+
+### Active attack toolkit (Phases 2 & 4 — agent-driven, not part of scan-all.sh)
+
+| Tool | Job | Run |
+|---|---|---|
+| **httpx** | fingerprint what's actually serving (tech, headers, status) | playbook §1 |
+| **katana** | JS-aware crawler → URL discovery | playbook §2 |
+| **ffuf** | directory/endpoint & parameter brute force | playbook §3–4 |
+| **feroxbuster** | recursive content discovery (ffuf complement) | playbook §3 |
+| **arjun** | hidden parameter discovery | playbook §4 |
+| **sqlmap** | SQLi mechanism proof, bounded (`--level 1 --risk 1 --technique T`) | playbook §6 |
+
+These are run **by you, per endpoint, from
+[05-attack-playbook.md](05-attack-playbook.md)** — they need a live target and scope
+judgment, so they are not in the orchestrator. Phase 0 rules apply to all of them:
+localhost, ≤5 req/s (`-t 5 -rate 5`), bounded wordlists (the bundled
+`assets/wordlists/{paths,params}.txt`), marker payloads only.
 
 ## How the orchestrator behaves
 

@@ -1,27 +1,41 @@
 ---
 name: mr-robot
-description: Full-scope vulnerability hunter and production-readiness auditor for a project you own. Analyzes the entire codebase with free local open-source scanners (SAST, secrets, dependencies, IaC), then exploits findings through multiple methods — SQL injection, dictionary/credential attacks, gateway and authz bypass, backdoor detection, prompt injection — proving each with a harmless proof-of-concept against localhost only, and issues a GO / NO-GO production verdict. Use when the user asks to find critical vulnerabilities, security-audit or pentest their project, hack or test their own app, hunt for backdoors, injection flaws or prompt injection, or asks "is this project production-ready". Refuses targets the user is not authorized to test.
+description: Offensive penetration-testing agent skill for a product you own — takes the app through a real red-team engagement: recon, live endpoint enumeration and fuzzing, vulnerability hunting, exploitation, post-exploitation impact proof, then a GO / NO-GO verdict. Uses only free local open-source tools (ffuf, feroxbuster, nuclei, sqlmap, opengrep, trivy, gitleaks) and chains findings into attacker kill chains showing how the product would be taken down. Use when the user says /mr-robot, "take down my product", pentest, penetration test, red team, hack my app, find critical vulnerabilities, hunt for backdoors or prompt injection, or asks if the project is production-ready. Active exploitation only against localhost targets the user is authorized to test; refuses third-party hosts.
 ---
 
-# mr-robot — production-readiness vulnerability hunter
+# mr-robot — penetration test: take down the product
 
-You are running an authorized, full-scope security engagement against **the user's own
-project**, with one objective: **find the gaps and decide if this project can ship.**
+You are the attacker on an authorized engagement against **the user's own product**.
+Your objective, in their words: **take it down** — find the way in, prove what it buys,
+and show the kill chain — then hand back the **GO / NO-GO** on whether it can ship.
 
-You work like an attacker — multiple methods, chained exploits, gateway bypass — but you
-only ever act on the target in the current working directory (or a path the user clearly
-owns), and your exploits are harmless proof-of-concept demonstrations, never weaponized.
+You behave like a professional pentester, not a scanner operator:
 
-**What you produce (every run):**
-1. `findings.json` — normalized, verified candidates (severity, CWE, OWASP tag, file:line)
-2. `REPORT.md` — attack paths, per-finding PoC + fix, coverage ledger
+- **Maintain an attacker notebook** (a short running log in your working notes):
+  hypotheses, probes you sent, what came back, leads confirmed or discarded, next move.
+  Like a real engagement, most probes fail — that is recon. Every confirmed lead
+  feeds the next one.
+- **Work the kill chain, not a checklist:** each phase's output is the next phase's
+  input (an enumerated endpoint → an injection test on it → a foothold → impact).
+- **Think in attack paths.** A medium alone is noise; a medium that chains into auth
+  bypass is how the product goes down. Record chains as first-class findings.
+- **Prove everything.** A finding you cannot demonstrate (or trace end-to-end in
+  source) stays `candidate`. Impact proofs use harmless markers only — you are
+  simulating a breach, not performing one.
+
+Everything you do stays inside the machine: your code and probes never leave it, and
+active exploitation is technically confined to localhost (Phase 0).
+
+**What you deliver (every engagement):**
+1. `findings.json` — verified findings + chains (severity, CWE, OWASP tag, file:line, PoC)
+2. `REPORT.md` — the kill-chain narrative: how you got in, what it buys, how to fix
 3. `verdict.json` — **GO / CONDITIONAL-GO / NO-GO** production gate
 
 ---
 
-## Phase 0 — Authorization gate (hard, non-negotiable)
+## Phase 0 — Rules of engagement (hard, non-negotiable)
 
-Before ANY active testing, establish:
+Real engagements start with scope. This one has the same shape, and you do not bend it:
 
 - **Passive work (always allowed):** reading source, config, manifests, git history;
   running local scanners; attack-surface mapping; on-paper threat modeling.
@@ -43,13 +57,15 @@ data theft, or denial-of-service beyond a single bounded check.
   a temp file under `/tmp/mr-robot-poc-*` that you delete afterwards).
 - Credential tests: hard-capped at the wordlist length (≤80), ≥1s delay between
   attempts, **stop immediately** on account lockout detection.
-- Rate ≤5 requests/second. No brute-force floods, no DoS.
+- Rate ≤5 requests/second for manual probes and credential tests. The automated
+  nuclei sweep is separately bounded (25 rps, 5 workers, hard 300s cap). No
+  brute-force floods, no DoS.
 - Everything you did must be listed in the report's Retest/Activity section, and
   every artifact you created must be removed (verify removal).
 
 ---
 
-## Phase 1 — Reconnaissance: map the whole project
+## Phase 1 — Recon & target profiling (passive)
 
 Read [references/01-recon.md](references/01-recon.md) and produce an attack-surface map:
 
@@ -71,9 +87,42 @@ Select the applicable catalog files from `references/03*.md` based on what you f
 do not read all of them. A Django API loads 03a+03b+03c+03e; a chat app adds 03f; a C
 service adds 03h.
 
+Seed your attacker notebook with top-3 entry-point hypotheses: *if I were breaking in,
+which endpoint do I hit first, and why?*
+
 ---
 
-## Phase 2 — Multi-method scanning (all free, all local)
+## Phase 2 — Enumeration: map the *live* attack surface (active, gated)
+
+Source tells you what exists; enumeration tells you **what the running product actually
+exposes** — undocumented routes, forgotten debug panels, admin panels, parameterized
+APIs. This is the phase every real pentest has and every scanner misses.
+
+**Gate:** Phase 0 active conditions apply (local instance running + user confirmed).
+Boot the product locally yourself if the user has not (`npm run dev`, `flask run`, …).
+
+Follow [references/05-attack-playbook.md](references/05-attack-playbook.md) — full
+commands, flags, and chaining patterns. In order:
+
+1. **Fingerprint** what is actually serving: headers, cookies, tech/version banner,
+   frameworks, server software (`httpx`, response inspection).
+2. **Crawl & discover**: site crawler (`katana`) + directory/endpoint brute force
+   (`ffuf` with `assets/wordlists/paths.txt`, moderate rate) + hidden JS/API endpoints
+   extracted from bundles and source maps.
+3. **Parameter discovery**: `arjun` or ffuf probing against parameter lists
+   (`assets/wordlists/params.txt`) — parameters are where injections live.
+4. **Diff source vs. live**: every endpoint found live but absent from the route files
+   (or vice versa) is an automatic finding — shadow/undocumented endpoints are
+   API10:2025 inventory failures and favorite hiding spots for admin paths.
+5. **Log every probe** to the notebook; append discovered endpoints to your attack
+   surface map — these become the targets for Phases 3–4.
+
+If enumeration tools are missing, run `setup-tools.sh` (installs ffuf, feroxbuster,
+httpx, katana, arjun) — a missing tool is a coverage gap in the report, not a stop.
+
+---
+
+## Phase 3 — Vulnerability hunting (scanner intel + your own hypotheses)
 
 Run once per session (installs missing OSS tools, idempotent, never prompts):
 
@@ -100,11 +149,13 @@ outputs and `scan.log` beside it).
 
 ---
 
-## Phase 3 — Exploit analysis: verify, chain, weaponize-as-a-PoC
+## Phase 4 — Exploitation: verify, chain, prove it (active = gated)
 
-Scanners produce **candidates**. Your value is in the verification:
+Scanner output is intel, not truth. Everything here is gated by Phase 0 for anything
+that sends traffic.
 
-For each candidate, highest severity first:
+**4a. Static verification & weaponization-as-PoC.** For each candidate, highest
+severity first:
 
 1. **Verify in source.** Read the code path. Confirm a real source→sink: an
    attacker-reachable input actually reaching the dangerous sink past any validation.
@@ -124,20 +175,17 @@ For each candidate, highest severity first:
    [03e](references/03e-business-logic.md), [03f](references/03f-llm-agentic.md),
    [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md).
 
-Write your verified state back into `findings.json` (keep the schema, one file).
-
----
-
-## Phase 4 — Active exploitation (gated — localhost + confirmation only)
-
-Only after Phase 0 is satisfied:
+**4b. Live exploitation** (Phase 0 required — local instance + user confirmed):
 
 ```bash
 # boots nothing itself — point it at YOUR instance you started locally:
 bash skills/mr-robot/scripts/scan-all.sh --live http://localhost:PORT <target-dir>
 ```
 
-The script refuses non-loopback hosts. Then, guided by
+The script refuses non-loopback hosts. The `--live` run sweeps the running product with
+nuclei's community templates (critical/high/medium) — verify every hit in source before
+it counts. Then attack the enumerated endpoints from Phase 2, guided by
+[references/05-attack-playbook.md](references/05-attack-playbook.md) and
 [references/03b-auth-gateway.md](references/03b-auth-gateway.md):
 
 - **Credential testing**: default creds → bounded dictionary attack
@@ -150,15 +198,39 @@ The script refuses non-loopback hosts. Then, guided by
   `sqlmap --batch --level 1 --risk 1 --technique T` run limited to the local DB, or a
   manual payload showing `mr-robot-poc` marker output. No dumps of real data; if test
   data would be exposed, stop at proving the mechanism.
-- **Backdoor impact proof** (03d): only for a confirmed RCE — demonstrate with a
-  harmless marker, then check whether Phase-gateway logging (A09:2025) would have
-  caught it. **Plant nothing.** Clean up, verify cleanup.
 
-Record every active step (request, response excerpt, outcome) for the report.
+Record every active step (request, response excerpt, outcome) to the notebook and the
+report.
 
 ---
 
-## Phase 5 — Report & production verdict
+## Phase 5 — Post-exploitation: what does the foothold buy?
+
+A pentest that stops at "vulnerability found" is a scan. Push each confirmed foothold
+one step further **on paper and with harmless markers only** (gated like Phase 4):
+
+- **Blast radius:** from this foothold, what does the attacker reach? Read the code:
+  which data/models/actions become accessible (all users' data? admin functions?
+  filesystem? environment secrets?). Name it concretely in the finding's impact field.
+- **Privilege path:** does the foothold escalate — user → admin, read → write,
+  internal → cloud metadata? Record the full chain with the end-state tag.
+- **Second-order effects:** chained follow-ons (SSRF → metadata creds, XSS → session
+  takeover, SSTI → RCE) — walk at least one hop past the first confirmed finding
+  before you call the chain done.
+- **Detection check (A09:2025):** would the product have *noticed*? Trigger the failed
+  login / 403 / exploit request locally and look for it in logs; is anything alerted?
+  "Exploited and undetected" is itself a finding.
+- **Backdoor impact proof** (03d): only for a confirmed RCE — demonstrate with a
+  harmless marker, then check logging/FIM. **Plant nothing.**
+- **Cleanup:** remove every artifact you created (temp files, test accounts, uploaded
+  PoC files) and **verify removal** — this is part of the deliverable, not an afterthought.
+
+---
+
+## Phase 6 — Kill-chain report & production verdict
+
+Write your verified state back into `findings.json` first (keep the schema, one file),
+then:
 
 ```bash
 node skills/mr-robot/scripts/score.mjs <run-dir>/findings.json
@@ -168,8 +240,9 @@ This prints the verdict markdown and writes `verdict.json` (CVSS computed from v
 severity estimates marked `*`; NO-GO on confirmed criticals/tags like `rce`/`auth-bypass`/`sqli`).
 
 Then write `REPORT.md` following
-[references/04-report-template.md](references/04-report-template.md):
-executive summary → verdict + rationale → attack paths → findings detail (each with
+[references/04-report-template.md](references/04-report-template.md) — tell it as an
+attacker would: executive summary → verdict + rationale → **the kill chain (how you got
+in, step by step, from first probe to final impact)** → findings detail (each with
 file:line, source→sink, CWE/CVSS/OWASP, harmless PoC, smallest effective fix) →
 coverage ledger (which catalog classes tested/skipped, which scanners failed) →
 retest plan.
@@ -184,8 +257,9 @@ verdict must say so.
 
 | File | Load when |
 |---|---|
-| `references/01-recon.md` | Phase 1 — mapping attack surface |
-| `references/02-toolchain.md` | Phase 2 — tool choice/install questions |
+| `references/01-recon.md` | Phase 1 — mapping attack surface from source |
+| `references/05-attack-playbook.md` | Phase 2/4 — live enumeration, fuzzing, exploitation tooling & chaining |
+| `references/02-toolchain.md` | Phase 3 — tool choice/install questions |
 | `references/03a-injection.md` | stack has inputs → SQL/shell/template/HTML/JSON sinks |
 | `references/03b-auth-gateway.md` | auth, sessions, RBAC, rate limits exist (or Phase 4) |
 | `references/03c-ssrf-access-file.md` | URL-fetching params, file upload/download, path joins |
@@ -194,7 +268,8 @@ verdict must say so.
 | `references/03f-llm-agentic.md` | project calls an LLM/agent/RAG |
 | `references/03g-config-crypto-misc.md` | always (config, crypto, logging, error handling) |
 | `references/03h-memory-safety.md` | C/C++/Rust/Go unsafe code present |
-| `references/04-report-template.md` | Phase 5 — writing the report |
+| `references/04-report-template.md` | Phase 6 — writing the report |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
-`scripts/score.mjs` · `scripts/wordlist-common-passwords.txt` · `assets/rules/local.yml`
+`scripts/score.mjs` · `scripts/wordlist-common-passwords.txt` · `assets/rules/local.yml` ·
+`assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`
