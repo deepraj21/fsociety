@@ -20,9 +20,7 @@ from urllib.parse import parse_qs, urlparse
 
 # --- planted credentials (FAKE — pattern bait for secret scanners) ---------------
 AWS_ACCESS_KEY_ID = "AKIAFAKEFAKEFAKEFAKE"          # pattern bait — inert, clearly fake
-DEMO_SESSION_JWT = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-                    "eyJzdWIiOiJkZW1vLXVzZXIiLCJhZG1pbiI6dHJ1ZX0."
-                    "bm90LWFyZWFsLXNpZbmF0dXJl")  # gitleaks: jwt (fake session token)
+DEMO_SESSION_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZW1vLXVzZXIiLCJhZG1pbiI6dHJ1ZX0.bm90LWFyZWFsLXNpZbmF0dXJl"  # gitleaks: jwt (fake session token)
 ADMIN_PASSWORD = "hunter2-demo-only"                 # generic password rule
 
 HOST, PORT = "127.0.0.1", 8766                       # loopback-only by design
