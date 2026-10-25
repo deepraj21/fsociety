@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>mr-robot — engagement console</title>
+<title>mr-robot + romero — engagement console</title>
 <style>
   :root{
     --green:#00ff9c; --green-dim:#0a6b46; --cyan:#31d7ff; --yellow:#ffd166;
@@ -166,8 +166,9 @@ COMMANDS.help = () => [
   ['<span class="bold cyanglow">AVAILABLE COMMANDS</span>', ""],
   ["", ""],
   tbl([
-   '<tr><th>install</th><td>add the skill to your agent (npx / skills.sh)</td></tr>',
+   '<tr><th>install</th><td>add the skills to your agent (npx / skills.sh)</td></tr>',
    '<tr><th>usage</th><td>how to invoke it — slash style &amp; natural language</td></tr>',
+   '<tr><th>romero</th><td>passive browser traffic &amp; storage report (companion)</td></tr>',
    '<tr><th>phases</th><td>the 0–7 engagement workflow</td></tr>',
    '<tr><th>tools</th><td>24 free &amp; local tools in the attack toolkit</td></tr>',
    '<tr><th>roe</th><td>rules of engagement — what it will never do</td></tr>',
@@ -183,6 +184,7 @@ COMMANDS.install = () => [
   ['<span class="bold cyanglow">INSTALL</span>', ""],
   ["", ""],
   ['<span class="dim">$</span> <span class="white">npx skills add deepraj21/fsociety --skill mr-robot</span>', ""],
+  ['<span class="dim">$</span> <span class="white">npx skills add deepraj21/fsociety --skill romero</span>', ""],
   ["", ""],
   ['<span class="dim">browse it on</span> <span class="cyan">skills.sh/deepraj21/fsociety</span>', ""],
   ['<span class="dim">then start your coding agent INSIDE the project you want attacked.</span>', ""],
@@ -203,7 +205,36 @@ COMMANDS.usage = () => [
   ['  <span class="yellow">"hunt for backdoors / prompt injection"</span>', ""],
   ['  <span class="yellow">"is this production ready?"</span>', ""],
   ["", ""],
+  ['<span class="dim">passive companion — what ships to the browser (type</span> <span class="white bold">romero</span><span class="dim">):</span>', ""],
+  ['  <span class="white bold">/romero audit my site\'s network calls</span>', ""],
+  ['  <span class="white bold">/romero inventory my APIs</span>', ""],
+  ['  <span class="white bold">/romero browser storage report for https://myapp.example</span>', ""],
+  ["", ""],
   ['<span class="dim">outputs:</span> <span class="cyan">findings.json</span> · <span class="cyan">REPORT.md</span> (kill chain) · <span class="cyan">verdict.json</span> (GO / NO-GO)', ""],
+  ['<span class="dim">romero:</span> <span class="cyan">REPORT.md</span> · <span class="cyan">capture.har</span> · <span class="cyan">capture.json</span> <span class="dim">(observation only — no verdict)</span>', ""],
+];
+
+COMMANDS.romero = () => [
+  ['<span class="bold cyanglow">ROMERO</span> <span class="dim">— passive browser traffic &amp; storage report (companion skill)</span>', ""],
+  ["", ""],
+  ['<span class="dim">points a REAL browser at a live product URL you own and records everything</span>', ""],
+  ['<span class="dim">the browser saw and holds — then writes the report, all computed locally:</span>', ""],
+  ["", ""],
+  tbl([
+   '<tr><th>§3</th><td>every network call — REST, GraphQL, WebSocket frames, SSE — grouped into endpoint templates</td></tr>',
+   '<tr><th>§4/5</th><td>request-header inventory · response headers + security-header checklist (CSP/HSTS/XFO/…)</td></tr>',
+   '<tr><th>§6</th><td>cookies with flags + ordered Set-Cookie events + document.cookie diff</td></tr>',
+   '<tr><th>§7</th><td>localStorage · sessionStorage · IndexedDB · Cache Storage · service workers · manifest</td></tr>',
+   '<tr><th>§8</th><td>tokens &amp; credentials in traffic — JWTs decoded locally</td></tr>',
+   '<tr><th>§9</th><td>third-party contacts and exactly what data they receive</td></tr>',
+   '<tr><th>§10–12</th><td>performance/protocol · console/errors/CSP log · observations + coverage gaps</td></tr>',
+  ]),
+  ["", ""],
+  ['<span class="dim">outputs:</span> <span class="cyan">REPORT.md</span> · <span class="cyan">capture.har</span> (HAR 1.2) · <span class="cyan">capture.json</span> <span class="dim">— values raw, nothing leaves the machine</span>', ""],
+  ['<span class="dim">bounds:</span> passive only (no fuzzing) · you confirm the URL is yours · budget 500/2000 · timeout 120s', ""],
+  ['<span class="dim">rehearse:</span> <span class="white">python3 skills/romero/assets/demo/app.py</span> <span class="dim">(127.0.0.1:8767) · selftest: scripts/selftest.sh</span>', ""],
+  ["", ""],
+  ['<span class="dim">companion to</span> <span class="white">mr-robot</span><span class="dim"> — romero observes, mr-robot attacks and issues the GO / NO-GO verdict.</span>', ""],
 ];
 
 COMMANDS.phases = () => [
@@ -349,14 +380,15 @@ async function run(raw){
   await sleep(250);
   await typeLine(BANNER, "green glow banner", 3);
   addLine("");
-  await typeLine("fsociety presents // mr-robot v1.0 — penetration-test agent skill", "cyan", 12);
+  await typeLine("fsociety presents // mr-robot v1.0 + romero — agent security skills", "cyan", 12);
   addLine('<span class="dim">objective: take down your product — before someone else does.</span>');
+  addLine('<span class="dim">          romero shows you what it ships to the browser first.</span>');
   addLine("");
   await typeLine("[ boot ] toolchain: 24 free & local tools ......... ", "dim", 10);
   addLine('<span class="green">[ ok ]</span> <span class="dim">no accounts · no API keys · your code never leaves this machine</span>');
   addLine('[ boot ] rules of engagement ...................... <span class="red">enforced in code</span> <span class="dim">(localhost-only active tests)</span>');
   addLine("");
-  addLine('type <span class="white bold">help</span> for commands · <span class="white bold">demo</span> for a simulated engagement · <span class="white bold">install</span> to get started');
+  addLine('type <span class="white bold">help</span> for commands · <span class="white bold">demo</span> for a simulated engagement · <span class="white bold">romero</span> for the passive browser report · <span class="white bold">install</span> to get started');
   addLine("");
   currentInput = makePrompt();
   currentInput.focus();
