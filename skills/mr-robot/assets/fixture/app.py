@@ -17,7 +17,8 @@ import ssl
 import sqlite3
 import subprocess
 import traceback
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 # --- planted credentials (FAKE — pattern bait for secret scanners) ---------------
@@ -29,10 +30,12 @@ HOST, PORT = "127.0.0.1", 8766                       # loopback-only by design
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # --- in-memory data ---------------------------------------------------------------
-DB = sqlite3.connect(":memory:")
-DB.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
-DB.executemany("INSERT INTO users (name, email) VALUES (?, ?)",
-               [("alice", "alice@example.test"), ("bob", "bob@example.test")])
+# check_same_thread=False: ThreadingHTTPServer serves concurrent requests and the
+# demo DB is process-local in-memory sqlite (no real concurrency risk to guard)
+DB = sqlite3.connect(":memory:", check_same_thread=False)
+DB.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, balance INTEGER)")
+DB.executemany("INSERT INTO users (name, email, balance) VALUES (?, ?, ?)",
+               [("alice", "alice@example.test", 100), ("bob", "bob@example.test", 200)])
 DB.commit()
 
 
@@ -95,6 +98,48 @@ class VulnHandler(BaseHTTPRequestHandler):
                     return self._send(f"ok — quota={arg('quota')}", 200, "application/json")
                 return self._send("forbidden", 403)
 
+            if url.path == "/echo":
+                # BUG (demo): reflected XSS — input echoed unescaped in an HTML context
+                return self._send(f"<h1>Hello {arg('name', 'world')}</h1>", 200, "text/html")
+
+            if url.path == "/fetch":
+                # BUG (demo): SSRF — server fetches any URL the client supplies.
+                # Bounded for the demo: http(s) only, 3s timeout, 64 KiB cap.
+                target = arg("url", "http://127.0.0.1:8766/health")
+                if not target.startswith(("http://", "https://")):
+                    return self._send("only http(s) in this demo", 400)
+                try:
+                    with urllib.request.urlopen(target, timeout=3) as r:
+                        return self._send(r.read(65536).decode("utf-8", "replace"))
+                except Exception as exc:
+                    return self._send(f"fetch failed: {exc}", 502)
+
+            if url.path == "/user":
+                # BUG (demo): IDOR — object returned by id with no ownership check
+                try:
+                    uid = int(arg("id", "1"))
+                except ValueError:
+                    return self._send("bad id", 400)
+                row = DB.execute(
+                    "SELECT id, name, email, balance FROM users WHERE id = ?", (uid,)).fetchone()
+                if row is None:
+                    return self._send("no such user", 404)
+                return self._send(repr(row), 200, "application/json")
+
+            if url.path == "/transfer":
+                # BUG (demo): state-changing GET with no CSRF token / Origin check
+                # and no amount validation — negative amount credits the sender
+                # (CSRF + business-logic in one route)
+                try:
+                    to_id, amount = int(arg("to", "2")), int(arg("amount", "0"))
+                except ValueError:
+                    return self._send("bad args", 400)
+                DB.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, to_id))
+                DB.execute("UPDATE users SET balance = balance - ? WHERE id = 1", (amount,))
+                DB.commit()
+                bal = DB.execute("SELECT balance FROM users WHERE id = 1").fetchone()[0]
+                return self._send(f"transferred {amount} to user {to_id}; alice balance now {bal}")
+
             if url.path == "/health":
                 return self._send("ok")
 
@@ -135,7 +180,7 @@ if __name__ == "__main__":
                         help="serve HTTPS with an auto-generated self-signed cert")
     args = parser.parse_args()
 
-    httpd = HTTPServer((HOST, PORT), VulnHandler)
+    httpd = ThreadingHTTPServer((HOST, PORT), VulnHandler)
     scheme = "http"
     if args.tls:
         httpd.socket = make_tls_context().wrap_socket(httpd.socket, server_side=True)

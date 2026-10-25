@@ -59,6 +59,7 @@ Where does untrusted data get **interpreted**?
 | Rate limiting | `express-rate-limit`, nginx `limit_req`, API gateway quotas | 03b |
 | CSRF | csrf middleware, SameSite cookies | 03b |
 | CORS | `Access-Control` config, wildcard origins | 03b |
+| Federated login (SSO) | OAuth/OIDC deps (`next-auth`, `passport`, `openid-connect`) or SAML (`saml`, `opensaml`, `python3-saml`, IdP metadata XML) | 03k (OAuth/OIDC) / 03m (SAML) |
 | Proxy / WAF / API gateway | nginx/traefik/Cloudflare config in repo | 03b |
 | Input validation layer | schema validation (zod, pydantic, marshmallow) — know what it *does* block | 03a |
 | Logging & alerting | audit logs, failed-auth logs, alert rules | 03d (A09 check) |

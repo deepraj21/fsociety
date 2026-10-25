@@ -97,7 +97,8 @@ Read [references/01-recon.md](references/01-recon.md) and produce an attack-surf
 Select the applicable catalog files from `references/03*.md` based on what you found —
 do not read all of them. A Django API loads 03a+03b+03c+03e; a chat app adds 03f; a C
 service adds 03h; GraphQL or WebSocket endpoints add 03j; delegated login (OAuth/OIDC)
-adds 03k; a reverse proxy/CDN in the deploy config (nginx/traefik/envoy) adds 03i;
+adds 03k; SAML SSO (assertions, IdP/SP metadata, python3-saml/opensaml/passport-saml)
+adds 03m; a reverse proxy/CDN in the deploy config (nginx/traefik/envoy) adds 03i;
 a browser/proxy HAR capture to review (or a TLS-terminating hop) adds 03l.
 
 Seed your attacker notebook with top-3 entry-point hypotheses: *if I were breaking in,
@@ -189,7 +190,8 @@ severity first:
    [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md),
    [03i](references/03i-http-protocol.md) (smuggling, cache, Host, ReDoS),
    [03j](references/03j-graphql-websocket.md), [03k](references/03k-oauth-oidc.md),
-   [03l](references/03l-traffic-interception.md) (HAR audit, interception, cookie/token leakage).
+   [03l](references/03l-traffic-interception.md) (HAR audit, interception, cookie/token leakage),
+   [03m](references/03m-saml-federation.md) (SAML SSO: XSW, unsigned assertions, replay).
 
 **4b. Live exploitation** (Phase 0 required — local instance + user confirmed):
 
@@ -349,6 +351,7 @@ reading the patch alone.
 | `references/03i-http-protocol.md` | proxy/CDN in deploy config, cache layer, Host/reset flows |
 | `references/03j-graphql-websocket.md` | GraphQL endpoint or WebSocket/subscription surface |
 | `references/03k-oauth-oidc.md` | delegated login (OAuth/OIDC/next-auth/passport) |
+| `references/03m-saml-federation.md` | SAML SSO present (assertions, IdP/SP metadata, saml/opensaml deps) |
 | `references/03l-traffic-interception.md` | HAR capture to audit, proxy in path, TLS/cookie/token leakage questions |
 | `references/04-report-template.md` | Phase 6 — writing the report |
 | `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |

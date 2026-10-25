@@ -6,6 +6,10 @@ flow end-to-end with test accounts at the *local* IdP (Keycloak/Dex/mock-OIDC in
 docker-compose counts as local). Never start flows against a real third-party IdP
 (Google/Azure) — static analysis only there.
 
+Delegated login via **SAML** is a different protocol with a different failure surface
+(signatures, XML wrapping, replay) — that catalog is [03m](03m-saml-federation.md);
+load it when the repo speaks SAML assertions.
+
 ## Find it (Phase 1/2)
 
 - **Static:** `next-auth`, `passport`, `oauthlib`, `omniauth`, `spring-security-

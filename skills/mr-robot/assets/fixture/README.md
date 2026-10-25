@@ -39,7 +39,9 @@ bash skills/mr-robot/scripts/retest.sh skills/mr-robot/assets/fixture/.mr-robot/
 
 | Lane | Where |
 |---|---|
-| Command injection / eval / weak crypto / pickle / weak RNG | `app.py` |
+| Command injection (`/run`), eval (`/render`), path traversal (`/read`), MD5 (`/hash`), weak RNG (`/token`), pickle deser (`/state`), weak admin password (`/admin`), verbose 500s | `app.py` |
+| SQL injection (`/search`) — works over http and https | `app.py` |
+| Reflected XSS (`/echo`) · SSRF (`/fetch`, self-fetch demo) · IDOR (`/user?id=`) · CSRF + business logic (`/transfer` — state-changing GET, no Origin check; negative amount credits the sender) | `app.py` |
 | Planted (fake) secrets for gitleaks | `app.py` header |
 | Dependency CVEs (osv/trivy) | `requirements.txt` (scanned statically; not installed) |
 | Dockerfile lint (hadolint + trivy + checkov) | `Dockerfile` |
