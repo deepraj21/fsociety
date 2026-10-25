@@ -118,7 +118,7 @@ capture-first (audit your own HAR exports, or proxy a localhost app) — **LAN M
 skills/mr-robot/
 ├── SKILL.md                 # engagement workflow: phases 0–6
 ├── references/              # recon, toolchain, attack playbook, 13 catalogs, report template
-├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · har-audit.mjs · retest.sh · score.mjs · sarif.mjs
+├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · har-audit.mjs · retest.sh · score.mjs · report.mjs · sarif.mjs · selftest.sh
 └── assets/                  # offline SAST rule pack, gitleaks config, path/param wordlists
 ```
 

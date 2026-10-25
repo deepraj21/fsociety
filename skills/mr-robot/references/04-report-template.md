@@ -4,6 +4,11 @@ Produce `REPORT.md` (and keep `findings.json` + `verdict.json` beside it). Outpu
 location: `<target>/.mr-robot/report/` unless the user named one. **Never modify target
 source** — the report is the deliverable.
 
+Scaffold the mechanical sections first (findings detail, coverage ledger, rejected list,
+retest plan, standards crosswalk — verdict line copied from `verdict.json`), then write
+the narrative `TODO(agent)` markers yourself:
+`node skills/mr-robot/scripts/report.mjs <run-dir>/findings.json -o <path>/REPORT.md`
+
 ## Structure
 
 ```markdown

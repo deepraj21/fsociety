@@ -154,6 +154,13 @@ bash skills/mr-robot/scripts/backdoor-scan.sh <target-dir>     # backdoor/implan
 Outputs land in `<target>/.mr-robot/run-<timestamp>/findings.json` (+ raw scanner
 outputs and `scan.log` beside it).
 
+Sanity-check the whole toolchain any time (also the pre-release gate — boots a temp
+copy of the fixture, exercises live lanes, probers, scan → score → report end to end):
+
+```bash
+bash skills/mr-robot/scripts/selftest.sh          # full (~3-4 min) · --quick skips live DAST
+```
+
 - A scanner that is missing or fails is **recorded as a coverage gap**, never fatal —
   note it in the report's coverage ledger.
 - Tool matrix, per-language specialist selection, and offline fallbacks:
@@ -280,7 +287,18 @@ for code-scanning upload — both in
 [references/07-ci-sarif.md](references/07-ci-sarif.md).
 
 Then write `REPORT.md` following
-[references/04-report-template.md](references/04-report-template.md) — tell it as an
+[references/04-report-template.md](references/04-report-template.md) — **scaffold it
+first, then fill it in**:
+
+```bash
+node skills/mr-robot/scripts/report.mjs <run-dir>/findings.json -o <run-dir>/REPORT.md
+```
+
+`report.mjs` renders every *mechanical* section (findings detail with locations and
+status, coverage ledger, rejected list, retest commands, standards crosswalk) and the
+verdict line taken from `verdict.json` — it never computes a verdict itself, and never
+invents prose: narrative parts come back marked `TODO(agent)`. Fill each marker from
+your notebook evidence. Then tell it as an
 attacker would: executive summary → verdict + rationale → **the kill chain (how you got
 in, step by step, from first probe to final impact)** → findings detail (each with
 file:line, source→sink, CWE/CVSS/OWASP, harmless PoC, smallest effective fix) →
@@ -360,5 +378,6 @@ reading the patch alone.
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
 `scripts/race-probe.sh` · `scripts/desync-probe.sh` · `scripts/har-audit.mjs` ·
-`scripts/retest.sh` · `scripts/score.mjs` · `scripts/sarif.mjs` · `scripts/wordlist-common-passwords.txt` ·
+`scripts/retest.sh` · `scripts/score.mjs` · `scripts/report.mjs` · `scripts/sarif.mjs` ·
+`scripts/selftest.sh` · `scripts/wordlist-common-passwords.txt` ·
 `assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`
