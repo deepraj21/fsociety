@@ -578,9 +578,9 @@ async function main() {
     await promptPause("[romero] window is yours — log in to your app, then come back and press ENTER to start the recorded phase… ");
     cap.phaseStart = new Date().toISOString();
     await sleep(1200); // settle post-login traffic
-  } else {
-    cap.phaseStart = new Date().toISOString();
   }
+  // headless / --no-login: no phase boundary — phaseStart stays null so the
+  // report doesn't mislabel normal startup requests as "pre-login"
   await harvestStorage();
 
   // extra routes (same origin unless absolute)
@@ -588,7 +588,10 @@ async function main() {
     if (Date.now() >= hardDeadlineAt) { log("hard deadline reached — skipping remaining routes"); break; }
     if (cap.budget.observed >= budget) { cap.budget.exceeded = true; log(`request budget ${budget} reached — skipping remaining routes`); break; }
     const abs = r.startsWith("http") ? r : new URL(r, entry.href).href;
-    cap.pages.push({ url: abs, kind: "route-executed" });
+    // mark the planned entry executed (no duplicate row in the report)
+    const planned = cap.pages.find((p) => p.kind === "route" && (p.url === r || p.url === abs));
+    if (planned) { planned.url = abs; planned.kind = "route executed"; }
+    else cap.pages.push({ url: abs, kind: "route executed" });
     log(`loading route ${abs}`);
     await navAndWait(abs, "route");
     await harvestStorage();
