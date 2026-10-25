@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>romero demo fixture</title></head>
+<body>
+<h1>romero demo fixture — INTENTIONALLY LOOSE. NEVER DEPLOY.</h1>
+<p>Writes storage, calls APIs, opens SSE + WebSocket, loads a third-party
+subresource — everything romero's capture should see in one page load.</p>
+
+<script>
+// ---- browser storage (report §7) ------------------------------------------
+localStorage.setItem("apiToken", "tok_demo_loose_localstorage");
+localStorage.setItem("session_expires", "2099-01-01T00:00:00Z");
+sessionStorage.setItem("cart", JSON.stringify({ items: 2, total: 42 }));
+document.cookie = "ui_pref=dark; Path=/";
+
+// build a structurally-valid JWT at runtime so report §8 can decode claims
+const b64url = (o) => btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const demoJwt = b64url({ alg: "HS256", typ: "JWT" }) + "." +
+                b64url({ sub: "demo-user", exp: 4102444800, scope: "read:profile write:orders" }) +
+                ".ZGVtby1zaWduYXR1cmUtbm90LXJlYWw";
+localStorage.setItem("demoJwt", demoJwt);
+
+// ---- IndexedDB (report §7) -------------------------------------------------
+const idbOpen = indexedDB.open("romero-demo-db", 1);
+idbOpen.onupgradeneeded = () => {
+  const db = idbOpen.result;
+  const store = db.createObjectStore("sessions", { keyPath: "sid" });
+  store.put({ sid: "sess-001", user: "alice", issued: 1700000000 });
+  store.put({ sid: "sess-002", user: "bob", issued: 1700000100 });
+};
+idbOpen.onsuccess = () => { try { idbOpen.result.close(); } catch (e) {} };
+
+// ---- API calls (report §3/§4/§8) ------------------------------------------
+fetch("/api/user?include=profile", { headers: { "Authorization": "Bearer " + demoJwt } })
+  .then((r) => r.json())
+  .then((d) => console.log("api/user ok", d.user))
+  .catch((e) => console.log("api/user failed", e));
+
+fetch("/api/track", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: "page=home&email=visitor@example.test&token=post-body-secret-999",
+}).then((r) => r.text()).then((t) => console.log("track ok", t));
+
+fetch("/redir").then((r) => r.text()).then((t) => console.log("redir followed", t));
+
+const x = new XMLHttpRequest();
+x.open("GET", "/api/ping");
+x.onload = () => console.log("ping", x.status);
+x.send();
+
+// ---- SSE (report §3) --------------------------------------------------------
+const es = new EventSource("/events");
+es.onmessage = (e) => console.log("sse msg", e.data);
+setTimeout(() => es.close(), 2500);
+
+// ---- WebSocket (report §3) --------------------------------------------------
+try {
+  const ws = new WebSocket("ws://" + location.host + "/ws");
+  ws.onopen = () => ws.send("hello-from-page");
+  ws.onmessage = (e) => console.log("ws msg", e.data);
+} catch (e) { console.log("ws unavailable", e); }
+
+// ---- third-party subresource (report §9): other HOST STRING, same box ------
+const px = new Image();
+px.src = "http://localhost:8767/pixel.gif";
+
+// ---- console lane (report §11) ----------------------------------------------
+console.error("demo-error-line: deliberately logged");
+</script>
+</body>
+</html>
