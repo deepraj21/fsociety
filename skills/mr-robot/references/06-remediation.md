@@ -1,7 +1,7 @@
 # 06 — Remediation playbook
 
 Fix patterns that actually close findings. Load this in Phase 7, after the verdict —
-one section per finding family, each tied back to its attack catalog (`03a`–`03k`).
+one section per finding family, each tied back to its attack catalog (`03a`–`03n`).
 Scanner-provided remediation text (`remediation` fields from kube-linter/nuclei/trivy)
 is the source of truth when present; this file is the pattern behind it.
 

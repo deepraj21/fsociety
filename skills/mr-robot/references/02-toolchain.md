@@ -14,6 +14,7 @@ a crash.
 | Secrets | **Gitleaks** | history + tree, redacted output | MIT | any |
 | SCA / CVE | **Trivy** fs | deps CVEs, secrets, misconfig | Apache-2.0 | lockfiles most ecosystems |
 | SCA / CVE | **OSV-Scanner** | dependency CVEs (belt & braces) | Apache-2.0 | lockfiles |
+| SCA / CVE | `cve-audit.mjs` (built-in) | known-CVE **verification**: fingerprint → curated exploited-CVE table → KEV cache → harmless probe (03n) | ours (MIT) | npm/composer/Docker/PHP |
 | IaC / cloud | **Checkov** | Terraform, CFN, K8s, Docker, GH Actions | Apache-2.0 | IaC |
 | Python | **Bandit** | Python-specific security smells | Apache-2.0 | Python |
 | Go | **gosec** | Go security AST rules | MIT | Go |

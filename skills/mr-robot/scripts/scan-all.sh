@@ -208,6 +208,18 @@ if have checkov; then
   BG_PIDS="$BG_PIDS $!"
 else skip "checkov"; fi
 
+# known-CVE verification lane (references/03n) — fingerprint + curated table;
+# passive always, + harmless header-diff probe when --live
+if have node; then
+  if [ -n "$LIVE_URL" ]; then
+    run_into_bg cve-audit "$OUT/cve-audit.json" -- \
+      node "$SCRIPT_DIR/cve-audit.mjs" "$TARGET" --live "$LIVE_URL" --out "$OUT/cve-audit.json"
+  else
+    run_into_bg cve-audit "$OUT/cve-audit.json" -- \
+      node "$SCRIPT_DIR/cve-audit.mjs" "$TARGET" --out "$OUT/cve-audit.json"
+  fi
+else skip "cve-audit"; fi
+
 # ---------------------------------------------------------------- language specialists (bg)
 if have bandit; then
   run_into_bg bandit "$OUT/bandit.json" -- \
@@ -566,6 +578,20 @@ if isinstance(d, dict):
                     f"package {pname}{(' ' + pver) if pver else ''}; "
                     f"aliases {', '.join((v.get('aliases') or [])[:4])}",
                     extra)
+
+# --- cve-audit (known-CVE verification lane, references/03n) ------------------
+# {"schema":"mr-robot-cve-audit-v1", findings:[{cve, also, pkg, version, source,
+#   severity, cvss, cwe, owasp, fixed, title, evidence, kev}]}
+d = load("cve-audit.json")
+if isinstance(d, dict):
+    for f in d.get("findings", []) or []:
+        extra = {"engine": "known-cve",
+                 "aliases": [f.get("cve")] + [a for a in (f.get("also") or []) if a]}
+        if isinstance(f.get("cvss"), (int, float)):
+            extra["cvss_score"] = f["cvss"]   # score.mjs: basis "reported"
+        add("cve-audit", f.get("title") or f.get("cve"),
+            None, None, f.get("severity") or "info",
+            f.get("cwe"), f.get("owasp"), f.get("evidence"), extra)
 
 # --- bandit --------------------------------------------------------------------
 d = load("bandit.json")

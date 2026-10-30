@@ -86,8 +86,10 @@ if not m or len(m.group(1)) > 1024: sys.exit(1)
 PYEOF
 if [ "$g2" = ok ]; then
   for f in SKILL.md references/03a-injection.md references/03m-saml-federation.md \
-           references/03l-traffic-interception.md references/04-report-template.md \
+           references/03l-traffic-interception.md references/03n-known-cves.md \
+           references/04-report-template.md \
            scripts/scan-all.sh scripts/desync-probe.sh scripts/har-audit.mjs \
+           scripts/cve-audit.mjs \
            scripts/score.mjs scripts/report.mjs scripts/retest.sh; do
     [ -f "$SKILL_DIR/$f" ] || { g2="missing $f"; break; }
   done

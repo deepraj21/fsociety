@@ -138,7 +138,7 @@ your real one), stops at `--budget` (default 500, hard 2000) and `--timeout`
 | 0 | Rules of engagement: target must be your project; live tests localhost-only | hard |
 | 1 | Recon: stack, entry points, trust boundaries, gateways, LLM surfaces — attacker hypotheses seeded | passive |
 | 2 | Enumeration: fingerprint, crawl, directory/param brute (ffuf, feroxbuster, katana, arjun), JS-mined endpoints → live attack-surface diff | **user confirmation** |
-| 3 | Hunting: SAST + secrets + deps + IaC + backdoor scan → candidates in one `findings.json` | passive |
+| 3 | Hunting: SAST + secrets + deps + IaC + backdoor scan + **known-CVE verify** (fingerprint → exploited-CVE table → KEV → probe) → candidates in one `findings.json` | passive |
 | 4 | Exploitation: verify every candidate in source, chain into attack paths, then live PoCs (nuclei, sqlmap, bounded credential tests, gateway bypass) | **user confirmation** |
 | 5 | Post-exploitation: blast radius, privilege paths, detection check (A09), cleanup + verified removal | **user confirmation** |
 | 6 | Kill-chain report + CVSS + coverage ledger + **GO / CONDITIONAL-GO / NO-GO** | — |
@@ -194,8 +194,8 @@ browser always runs in an isolated temp profile.
 ```
 skills/mr-robot/
 ├── SKILL.md                 # engagement workflow: phases 0–6
-├── references/              # recon, toolchain, attack playbook, 13 catalogs, report template
-├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · har-audit.mjs · retest.sh · score.mjs · report.mjs · sarif.mjs · selftest.sh
+├── references/              # recon, toolchain, attack playbook, 14 catalogs, report template
+├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · har-audit.mjs · cve-audit.mjs · retest.sh · score.mjs · report.mjs · sarif.mjs · selftest.sh
 └── assets/                  # offline SAST rule pack, gitleaks config, path/param wordlists
 
 skills/romero/
