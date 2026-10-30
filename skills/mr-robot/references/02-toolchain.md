@@ -43,6 +43,7 @@ a crash.
 | **jwt_tool** | JWT attacks: alg/key confusion, tampering, `kid` injection | 03b JWT lane |
 | **nmap** | bounded localhost port sweep (top-200, in `scan-all.sh --live`) | orchestrator |
 | **daemon-sweep.sh** | loopback daemon Origin/CORS hijack sweep (WS forged-Origin handshake) — 08 | any phase (08) |
+| **fuzz-lane.mjs** | bounded deterministic mutation fuzzing of local builds + PIE/NX/RELRO/canary checksec — 09 | Phase 4 (09) |
 
 These are run **by you, per endpoint, from
 [05-attack-playbook.md](05-attack-playbook.md)** — they need a live target and scope

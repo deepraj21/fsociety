@@ -18,7 +18,7 @@
 #   2 packaging     SKILL.md frontmatter (name, description <=1024) · file map
 #   3 fixture       boots on 127.0.0.1:8766 from the temp copy
 #   4 lanes         live proofs: SQLi · XSS · SSRF · IDOR · transfer(negative)
-#   5 probers       desync-probe exit 0 (direct topology) · race-probe 0|1 · daemon-sweep clean
+#   5 probers       desync-probe exit 0 (direct topology) · race-probe 0|1 · daemon-sweep clean · fuzz-lane crash=1 clean=0
 #   6 scan          scan-all (--live unless --quick) → exit 0
 #   7 findings      findings-v1 schema, unique ids, counts add up
 #   8 har-audit     synthetic HAR fires >=10 rule families · --append merge sound
@@ -87,9 +87,10 @@ PYEOF
 if [ "$g2" = ok ]; then
   for f in SKILL.md references/03a-injection.md references/03m-saml-federation.md \
            references/03l-traffic-interception.md references/03n-known-cves.md \
-           references/08-local-daemons.md references/04-report-template.md \
+           references/08-local-daemons.md references/09-fuzz-binary.md \
+           references/04-report-template.md \
            scripts/scan-all.sh scripts/desync-probe.sh scripts/har-audit.mjs \
-           scripts/cve-audit.mjs scripts/daemon-sweep.sh \
+           scripts/cve-audit.mjs scripts/daemon-sweep.sh scripts/fuzz-lane.mjs \
            scripts/score.mjs scripts/report.mjs scripts/retest.sh; do
     [ -f "$SKILL_DIR/$f" ] || { g2="missing $f"; break; }
   done
@@ -153,10 +154,34 @@ dsrc=0
 bash "$SCRIPT_DIR/daemon-sweep.sh" -p "$PORT" >"$WORK/dsweep.out" 2>&1 || dsrc=$?
 ds_ok=0
 if [ "$dsrc" = 0 ]; then ds_ok=1; else say "  daemon-sweep exit $dsrc (expected 0): $(grep VERDICT "$WORK/dsweep.out" | head -1)"; fi
-if [ "$desync_ok" = 1 ] && [ "$race_ok" = 1 ] && [ "$ds_ok" = 1 ]; then
-  pass 5 "probers" "desync exit 0 + race exit $rrc + sweep clean"
+# fuzz-lane: crash-path (marker seed crashes a SIGSEGV-on-marker node target at
+# iteration 1 → exit 1) + clean-path (marker-free target → exit 0, budget 3s)
+fz_ok=0
+if command -v node >/dev/null 2>&1; then
+  mkdir -p "$WORK/fuzzcorpus"
+  printf 'MRK' > "$WORK/fuzzcorpus/seed.txt"
+  printf '%s\n' \
+    'let d="";process.stdin.on("data",c=>d+=c);' \
+    'process.stdin.on("end",()=>{if(d.includes("MRK"))process.kill(process.pid,"SIGSEGV");else process.exit(0);});' \
+    > "$WORK/fuzzcrash.mjs"
+  printf '%s\n' \
+    'let d="";process.stdin.on("data",c=>d+=c);' \
+    'process.stdin.on("end",()=>process.exit(0));' \
+    > "$WORK/fuzzclean.mjs"
+  fzrc=0; node "$SCRIPT_DIR/fuzz-lane.mjs" --budget 5 --max 50 \
+    --corpus "$WORK/fuzzcorpus" -- node "$WORK/fuzzcrash.mjs" >"$WORK/fuzzcrash.out" 2>&1 || fzrc=$?
+  fzcleanrc=0; node "$SCRIPT_DIR/fuzz-lane.mjs" --budget 3 --max 20 \
+    -- node "$WORK/fuzzclean.mjs" >"$WORK/fuzzclean.out" 2>&1 || fzcleanrc=$?
+  if [ "$fzrc" = 1 ] && [ "$fzcleanrc" = 0 ]; then fz_ok=1
+  else say "  fuzz exit crash=$fzrc (want 1) clean=$fzcleanrc (want 0)"; fi
 else
-  fail 5 "probers" "desync_ok=$desync_ok race_exit=$rrc (expected 0|1) ds_ok=$ds_ok (expected 0)"
+  say "  fuzz skipped (no node)"
+  fz_ok=1
+fi
+if [ "$desync_ok" = 1 ] && [ "$race_ok" = 1 ] && [ "$ds_ok" = 1 ] && [ "$fz_ok" = 1 ]; then
+  pass 5 "probers" "desync 0 + race $rrc + sweep clean + fuzz 1/0"
+else
+  fail 5 "probers" "desync_ok=$desync_ok race_exit=$rrc ds_ok=$ds_ok (want 0) fz_ok=$fz_ok (crash=1 clean=0)"
 fi
 
 # ---------------------------------------------------------------- gates 6-9: scan + downstream chain

@@ -42,6 +42,11 @@ For each candidate:
 - Never produce weaponized shellcode/ROP chains — ASan/UBSan/gdb backtrace is sufficient
   evidence for the report; severity comes from reachability × impact × mitigations.
 - Race/UAF candidates: run under `TSAN` (`-fsanitize=thread`) or helgrind, same rule.
+- No known PoC at hand? Fuzz the parser directly — `scripts/fuzz-lane.mjs` (seeded,
+  deterministic, first crash stops the run) produces the crashing input + sanitizer
+  trace; its `--checksec` pass on the shipped binary records which mitigations
+  (PIE/NX/RELRO/canary) the report's severity should account for. See
+  [09-fuzz-binary.md](09-fuzz-binary.md).
 
 ## Report mapping (severity anchors from CWE Top 25 2025)
 

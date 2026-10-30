@@ -241,6 +241,12 @@ guided by
   ≤3 requests each with a forged foreign Origin (WS handshake, CORS echo). A
   `101` or reflected `ACAO` = any web page can drive that tool; candidate until
   the daemon's config intent is checked. Loopback-only by construction.
+- **Fuzz + binary lane** (09): native CLIs, file parsers and daemons get their
+  inputs fuzzed by `scripts/fuzz-lane.mjs` (seeded deterministic mutator, first
+  crash stops the run, `@@`-file or stdin delivery) and their shipped binaries
+  checked for PIE/NX/RELRO/canary with the evidence line. A crash input is the
+  finding — reproduce with the same seed, triage, never weaponize. Local builds
+  only; budget-capped.
 - **Traffic audit** (03l): a browser/mitmproxy HAR capture feeds
   `scripts/har-audit.mjs` — passive, zero contact — for tokens-in-URL, cleartext
   credentials, cookie flags, CORS, and version/stack leaks; `--append` merges the
@@ -382,11 +388,13 @@ reading the patch alone.
 | `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |
 | `references/07-ci-sarif.md` | CI gates, SARIF export, KEV enrichment |
 | `references/08-local-daemons.md` | loopback listeners, MCP/dev-tool/DevTools ports, Origin-hijack questions |
+| `references/09-fuzz-binary.md` | native CLI/parser/daemon in scope → fuzz its inputs, check binary hardening (PIE/NX/RELRO/canary) |
 | `assets/fixture/` | no target at hand — bundled vulnerable demo app (rehearsal) |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
 `scripts/race-probe.sh` · `scripts/desync-probe.sh` · `scripts/har-audit.mjs` ·
 `scripts/cve-audit.mjs` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/report.mjs` ·
 `scripts/sarif.mjs` · `scripts/selftest.sh` · `scripts/daemon-sweep.sh` ·
+`scripts/fuzz-lane.mjs` ·
 `scripts/wordlist-common-passwords.txt` ·
 `assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`

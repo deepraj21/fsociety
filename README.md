@@ -143,7 +143,7 @@ your real one), stops at `--budget` (default 500, hard 2000) and `--timeout`
 | 5 | Post-exploitation: blast radius, privilege paths, detection check (A09), cleanup + verified removal | **user confirmation** |
 | 6 | Kill-chain report + CVSS + coverage ledger + **GO / CONDITIONAL-GO / NO-GO** | — |
 
-The ~130-test attack catalog is mapped to **OWASP Top 10:2025**, **WSTG**, **OWASP API
+The ~135-test attack catalog is mapped to **OWASP Top 10:2025**, **WSTG**, **OWASP API
 Top 10**, **OWASP LLM/Agentic Top 10 2025**, and **MITRE CWE Top 25** — covering
 injection (SQLi, SSTI, XSS, XXE, deserialization), auth/gateway bypass, SSRF, file
 access, supply-chain backdoors, business logic & races, LLM/agentic abuse, config/crypto,
@@ -195,7 +195,7 @@ browser always runs in an isolated temp profile.
 skills/mr-robot/
 ├── SKILL.md                 # engagement workflow: phases 0–6
 ├── references/              # recon, toolchain, attack playbook, 14 catalogs, report template
-├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · daemon-sweep.sh · har-audit.mjs · cve-audit.mjs · retest.sh · score.mjs · report.mjs · sarif.mjs · selftest.sh
+├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · daemon-sweep.sh · fuzz-lane.mjs · har-audit.mjs · cve-audit.mjs · retest.sh · score.mjs · report.mjs · sarif.mjs · selftest.sh
 └── assets/                  # offline SAST rule pack, gitleaks config, path/param wordlists
 
 skills/romero/

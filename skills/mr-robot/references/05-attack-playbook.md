@@ -63,7 +63,9 @@ ffuf -u "$TARGET/search?FUZZ=test" -w skills/mr-robot/assets/wordlists/params.tx
 ```
 Baseline trick: send one request with a bogus param, note the response size/time; a
 param is *live* when the response changes. Any live param on an interesting endpoint →
-feed it straight to step 6.
+feed it straight to step 6. **Non-HTTP targets** (native CLI, file parser, local
+daemon): skip the ffuf lane — fuzz the input directly per
+[09-fuzz-binary.md](09-fuzz-binary.md) (`fuzz-lane.mjs`).
 
 ## 5 — Build the target list (notebook → next phase)
 
