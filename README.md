@@ -195,7 +195,7 @@ browser always runs in an isolated temp profile.
 skills/mr-robot/
 ├── SKILL.md                 # engagement workflow: phases 0–6
 ├── references/              # recon, toolchain, attack playbook, 14 catalogs, report template
-├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · har-audit.mjs · cve-audit.mjs · retest.sh · score.mjs · report.mjs · sarif.mjs · selftest.sh
+├── scripts/                 # setup-tools.sh · scan-all.sh · backdoor-scan.sh · race-probe.sh · desync-probe.sh · daemon-sweep.sh · har-audit.mjs · cve-audit.mjs · retest.sh · score.mjs · report.mjs · sarif.mjs · selftest.sh
 └── assets/                  # offline SAST rule pack, gitleaks config, path/param wordlists
 
 skills/romero/

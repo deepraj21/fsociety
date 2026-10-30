@@ -18,7 +18,7 @@
 #   2 packaging     SKILL.md frontmatter (name, description <=1024) · file map
 #   3 fixture       boots on 127.0.0.1:8766 from the temp copy
 #   4 lanes         live proofs: SQLi · XSS · SSRF · IDOR · transfer(negative)
-#   5 probers       desync-probe exit 0 (direct topology) · race-probe 0|1
+#   5 probers       desync-probe exit 0 (direct topology) · race-probe 0|1 · daemon-sweep clean
 #   6 scan          scan-all (--live unless --quick) → exit 0
 #   7 findings      findings-v1 schema, unique ids, counts add up
 #   8 har-audit     synthetic HAR fires >=10 rule families · --append merge sound
@@ -87,9 +87,9 @@ PYEOF
 if [ "$g2" = ok ]; then
   for f in SKILL.md references/03a-injection.md references/03m-saml-federation.md \
            references/03l-traffic-interception.md references/03n-known-cves.md \
-           references/04-report-template.md \
+           references/08-local-daemons.md references/04-report-template.md \
            scripts/scan-all.sh scripts/desync-probe.sh scripts/har-audit.mjs \
-           scripts/cve-audit.mjs \
+           scripts/cve-audit.mjs scripts/daemon-sweep.sh \
            scripts/score.mjs scripts/report.mjs scripts/retest.sh; do
     [ -f "$SKILL_DIR/$f" ] || { g2="missing $f"; break; }
   done
@@ -146,10 +146,17 @@ bash "$SCRIPT_DIR/race-probe.sh" -n 6 -X GET \
 rrc=$?
 race_ok=0
 if [ "$rrc" = 0 ] || [ "$rrc" = 1 ]; then race_ok=1; else say "  race exit $rrc (expected 0|1)"; fi
-if [ "$desync_ok" = 1 ] && [ "$race_ok" = 1 ]; then
-  pass 5 "probers" "desync uniform exit 0 + race exit $rrc acceptable"
+# daemon-sweep against the fixture port: the fixture sends no ACAO and no WS 101,
+# so a clean (exit 0) verdict is the deterministic expectation — exit 1 means the
+# sweep's detection fired where it must not (or the fixture grew a CORS header)
+dsrc=0
+bash "$SCRIPT_DIR/daemon-sweep.sh" -p "$PORT" >"$WORK/dsweep.out" 2>&1 || dsrc=$?
+ds_ok=0
+if [ "$dsrc" = 0 ]; then ds_ok=1; else say "  daemon-sweep exit $dsrc (expected 0): $(grep VERDICT "$WORK/dsweep.out" | head -1)"; fi
+if [ "$desync_ok" = 1 ] && [ "$race_ok" = 1 ] && [ "$ds_ok" = 1 ]; then
+  pass 5 "probers" "desync exit 0 + race exit $rrc + sweep clean"
 else
-  fail 5 "probers" "desync_ok=$desync_ok race_exit=$rrc (expected 0|1)"
+  fail 5 "probers" "desync_ok=$desync_ok race_exit=$rrc (expected 0|1) ds_ok=$ds_ok (expected 0)"
 fi
 
 # ---------------------------------------------------------------- gates 6-9: scan + downstream chain

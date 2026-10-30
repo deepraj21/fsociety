@@ -236,6 +236,11 @@ guided by
   and compares response counts *and* status sequences against the target's own
   baseline — unsolicited or shifted responses are the signature. Direct-only
   topology is an expected uniform result; say so rather than overclaiming.
+- **Daemon Origin sweep** (08): local dev/MCP/DevTools daemons are part of the
+  surface — `scripts/daemon-sweep.sh` enumerates loopback listeners and probes
+  ≤3 requests each with a forged foreign Origin (WS handshake, CORS echo). A
+  `101` or reflected `ACAO` = any web page can drive that tool; candidate until
+  the daemon's config intent is checked. Loopback-only by construction.
 - **Traffic audit** (03l): a browser/mitmproxy HAR capture feeds
   `scripts/har-audit.mjs` — passive, zero contact — for tokens-in-URL, cleartext
   credentials, cookie flags, CORS, and version/stack leaks; `--append` merges the
@@ -376,10 +381,12 @@ reading the patch alone.
 | `references/04-report-template.md` | Phase 6 — writing the report |
 | `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |
 | `references/07-ci-sarif.md` | CI gates, SARIF export, KEV enrichment |
+| `references/08-local-daemons.md` | loopback listeners, MCP/dev-tool/DevTools ports, Origin-hijack questions |
 | `assets/fixture/` | no target at hand — bundled vulnerable demo app (rehearsal) |
 
 `scripts/setup-tools.sh` · `scripts/scan-all.sh` · `scripts/backdoor-scan.sh` ·
 `scripts/race-probe.sh` · `scripts/desync-probe.sh` · `scripts/har-audit.mjs` ·
 `scripts/cve-audit.mjs` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/report.mjs` ·
-`scripts/sarif.mjs` · `scripts/selftest.sh` · `scripts/wordlist-common-passwords.txt` ·
+`scripts/sarif.mjs` · `scripts/selftest.sh` · `scripts/daemon-sweep.sh` ·
+`scripts/wordlist-common-passwords.txt` ·
 `assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`
