@@ -33,6 +33,10 @@ unauthorized access, full stop — even when the Wi-Fi is open.
      CWE-942). Verify live: a credentialed `fetch` from a foreign origin.
    - `credential-in-body` — form POST body; confirm the hop was TLS, then check
      the body never got logged (error pages that echo POST data).
+   - `stale-session-token` — a session cookie/JWT present in the capture whose
+     revocation story is unproven: replay it after logout and after a password
+     change (03b §5) — an AiTM/phishing-stolen token that survives both is the
+     whole account, MFA and all.
    - `version-header` / `private-ip-disclosure` — recon fuel: exact stack versions
      and RFC1918 topology leaks in JSON bodies.
 3. **Merge into the scan.** `--append` folds HAR findings into an existing

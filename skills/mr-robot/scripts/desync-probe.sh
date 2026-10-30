@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # mr-robot — bounded HTTP request smuggling / desync prober (references/03i).
 #
-# Probes CL.TE / TE.CL framing disagreement with harmless marker GETs and
+# Probes CL.TE / TE.CL / CL.0 framing disagreement with harmless marker GETs and
 # watches for RESPONSES WE DID NOT ASK FOR. Detection is count-based and
 # calibrated against the target's own pipeline behavior:
 #
@@ -29,7 +29,7 @@
 #         2 usage/refused · 3 transport errors dominated
 #
 # BOUNDS (Phase 0, non-negotiable): localhost ONLY (enforced below), cleartext
-# http:// only, 11 requests total (3 baseline + 4 families x 2), GET bodies
+# http:// only, 13 requests total (3 baseline + 5 families x 2), GET bodies
 # only — no state-changing method ever. The smuggle payload is a marker GET
 # (/mr-robot-desync-marker): if a desync fires, grep the target's access log
 # for it — attribution without touching data.
@@ -102,15 +102,21 @@ benign() { # $1 = outfile, $2 = connection
 # smuggle body: chunked terminator + a full marker GET (harmless, GET-only)
 printf '0\r\n\r\nGET /mr-robot-desync-marker HTTP/1.1\r\nHost: %s\r\nConnection: keep-alive\r\n\r\n' \
   "$HOST_HDR" > "$WORK/smuggle.body"
-CL="$(wc -c < "$WORK/smuggle.body" | tr -d '[:space:]')"
 
-attack() { # $1 = outfile, $2 = TE header block (may be empty; literal CRLF bytes)
+# CL.0 body: a marker request as a RAW body (no chunk framing) — sent with
+# Content-Length and no Transfer-Encoding; a hop that ignores the CL body on a
+# GET would start parsing these bytes as its next request (03i §CL.0)
+printf 'GET /mr-robot-desync-marker HTTP/1.1\r\nHost: %s\r\nConnection: keep-alive\r\n\r\n' \
+  "$HOST_HDR" > "$WORK/cl0.body"
+
+attack() { # $1 = outfile, $2 = TE header block (may be empty), $3 = body file (default smuggle)
+  _body="${3:-$WORK/smuggle.body}"
   {
     printf 'GET %s HTTP/1.1\r\nHost: %s\r\nConnection: keep-alive\r\n' "$PATH_U" "$HOST_HDR"
     [ -f "$WORK/extra.hdr" ] && cat "$WORK/extra.hdr"
-    printf '%s\r\n' "$2"
-    printf 'Content-Length: %s\r\n\r\n' "$CL"
-    cat "$WORK/smuggle.body"
+    [ -n "$2" ] && printf '%s\r\n' "$2"
+    printf 'Content-Length: %s\r\n\r\n' "$(wc -c < "$_body" | tr -d '[:space:]')"
+    cat "$_body"
   } > "$1"
 }
 
@@ -121,7 +127,7 @@ send() { # $1 = payload file, $2 = outfile
 nresp() { grep -aoE 'HTTP/1\.[01] [0-9]{3}' "$1" 2>/dev/null | wc -l | tr -d '[:space:]'; }
 statuses() { grep -aoE 'HTTP/1\.[01] [0-9]{3}' "$1" 2>/dev/null | awk '{print $2}' | tr '\n' ',' | sed 's/,$//'; }
 
-echo "[desync] $nhost:$nport$PATH_U  (11 requests: 3 baseline + 4 families x 2, GET marker bodies only)"
+echo "[desync] $nhost:$nport$PATH_U  (13 requests: 3 baseline + 5 families x 2, GET marker bodies only)"
 
 # ---- b1: transport sanity -------------------------------------------------------
 benign "$WORK/b1.req" close
@@ -147,7 +153,7 @@ for _s in $(printf '%s' "$B2STATUSES" | tr ',' ' '); do
   [ "$_s" = "$B1STATUS" ] || b2_trusted=0
 done
 
-# ---- families: TE+CL disagreement variants (03i; CL always present) ------------
+# ---- families: TE+CL disagreement variants + CL.0 (03i; CL always present) -----
 # NOTE: $'...' quoting — command substitution strips a trailing \n, which would
 # leave a dangling \r and merge the TE header into the next header line.
 V1=$'Transfer-Encoding: chunked'
@@ -157,14 +163,16 @@ V4=$'Transfer-Encoding: xchunked'
 i=1
 : > "$WORK/flags"
 transport_errs=0
-while [ "$i" -le 4 ]; do
+while [ "$i" -le 5 ]; do
+  te_body="$WORK/smuggle.body"
   case "$i" in
     1) te="$V1"; name="TE chunked (CL.TE/TE.CL)" ;;
     2) te="$V2"; name="TE hidden (leading tab)" ;;
     3) te="$V3"; name="TE doubled (chunked+identity)" ;;
     4) te="$V4"; name="TE x-prefix (xchunked)" ;;
+    5) te=""; te_body="$WORK/cl0.body"; name="CL.0 (raw body, no TE)" ;;
   esac
-  attack "$WORK/p$i.req" "$te"
+  attack "$WORK/p$i.req" "$te" "$te_body"
   { cat "$WORK/p$i.req"; benign "$WORK/p$i.benign" close; cat "$WORK/p$i.benign"; } > "$WORK/p$i.combined"
   send "$WORK/p$i.combined" "$WORK/p$i.out"
   n="$(nresp "$WORK/p$i.out")"
@@ -204,7 +212,7 @@ if [ "$flagged" -gt 0 ]; then
   exit 1
 fi
 
-echo "[desync] VERDICT: uniform — responses match this server's own pipeline behavior at all 4 families."
+echo "[desync] VERDICT: uniform — responses match this server's own pipeline behavior at all 5 families."
 echo "         Direct-only topology (no proxy in path) is expected to land here (03i §Verify)."
 echo "         A uniform result is NOT proof of safety: if the repo shows a proxy with request"
 echo "         rewriting (nginx/traefik/envoy/CDN), retry with the proxy in front and re-check."

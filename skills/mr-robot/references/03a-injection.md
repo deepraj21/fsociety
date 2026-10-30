@@ -94,6 +94,38 @@ Any endpoint parsing XML/SOAP/SVG/XLSX/parsers-with-DTD: `ElementTree` (pre-3.8
   `Object.assign(target, JSON.parse(body))`, `extend(`, `clone(` with `__proto__` gaps.
 - **Prove:** `{"__proto__":{"mr-robot-poc":1}}` → observe polluted property on `{}`/config flag.
 
+### Polluted → RCE: gadget hunting (why PP is critical, not medium)
+
+Pollution alone is property injection; it becomes RCE when a **gadget** — a
+dependency that reads attacker-influenceable keys off an object — *executes* what
+it reads. React2Shell (CVE-2025-55182, [03n](03n-known-cves.md)) is the 2025
+poster: a duck-typed `$1:then:constructor` chain routes Flight deserialization
+into `Function`. The generic hunt, before any live probe:
+
+- **Detect (deps, passive):** grep installed packages for gadgets that read
+  dangerous keys from merged options:
+  ```
+  grep -rlE "outputFunctionName|escapeFunction|compileDebug" node_modules/*/lib 2>/dev/null | head   # ejs/pug template option RCE
+  grep -rlE "child_process|execSync" node_modules/*/index.js 2>/dev/null | grep -i "option\|opts" | head
+  grep -rlE "allowProtoPropertiesByDefault|allowProtoMethodsByDefault" node_modules/ 2>/dev/null | head  # handlebars gates
+  ```
+  Prime suspects: `ejs`/`pug`/`handlebars` view options fed from merged config,
+  `child_process` wrappers taking `options.shell`/`env` from an options object,
+  `socket.io`/`body-parser` recursive merges, `lodash.template` options,
+  anything doing `require(x)` where `x` came off a polluted object.
+- **Verify:** is the merge reachable pre-auth (JSON body → `merge(config, req.body)`)?
+  Pollution via **both** `__proto__` and `constructor.prototype` (many filters block
+  only the first); note which key path worked — it belongs in the evidence.
+- **Prove (marker-grade — the pipe, not the payload):** drive the same chain with
+  a benign value: pollute the gadget's option key with the marker string and show
+  it arriving at the sink (rendered into output, echoed in logs, visible in the
+  constructed command line). That proves control; the weaponized step — swapping
+  the marker for an exec payload — is exactly what we do NOT take. Report
+  `critical` with the full chain (`merge sink → gadget → sink`) as evidence.
+- **Impact:** unauthenticated JSON body → property pollution → gadget = RCE
+  (A03/A08 chain); tag `rce-chain`, and pair with [03n](03n-known-cves.md) when
+  the polluted dependency also carries a known exploited CVE.
+
 ## HTTP-layer injection (WSTG-INJT-03/04/15/16/17)
 
 Deep protocol-level testing (smuggling/desync, cache poisoning, Host attacks,

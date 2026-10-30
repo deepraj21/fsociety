@@ -83,6 +83,29 @@ Two-account methodology (create both locally):
 - Privilege changes must re-authenticate (step-up) — check password-change without current PW.
 - Session logout/timeout verified by re-using old cookie after logout (WSTG-SESS-06/07).
 
+### Session-replay / AiTM posture (stolen-token era — 2025/26's stolen-session shift)
+
+Attackers moved from stealing passwords to stealing *tokens* (adversary-in-the-middle
+phishing, malware reading the cookie jar): a bearer session bypasses MFA outright and
+outlives the password reset that "fixed" the account. Verify each posture item on
+localhost with ONE login + replay — never a credential-stuffing run:
+
+- **Password-change ≠ session kill:** log in twice, change the password in one
+  session, replay the *other* session's cookie → still 2xx = **stolen session
+  survives the reset** (WSTG-SESS-08; high when combined with a token-theft path).
+- **Revocation reachability:** after logout-all / "revoke sessions", replay both
+  the access token (Authorization header) and refresh token → old ones still
+  minted/accepted = logout theater (03k refresh-token replay).
+- **Sender-constraining absent:** bearer JWT/opaque tokens accepted from *any*
+  client with no DPoP `jkt` thumbpin or mTLS binding — record as posture finding
+  (the absence is what makes any single stolen token replayable anywhere).
+- **Step-up gaps:** sensitive flows (email change, payout, API-key create, MFA
+  disable) trusting the bare cookie with no re-auth = one AiTM cookie → full
+  takeover; `tags: account-takeover`.
+- **Cookie hardening for the theft channel:** missing `HttpOnly` (XSS reads it),
+  `Secure`, `SameSite=None` without CSRF story, non-`__Host-` prefix — each widens
+  how *easily* the token can be stolen, not just used.
+
 ## PoC discipline
 
 Every proof = harmless marker or observable state difference on **localhost**; record the

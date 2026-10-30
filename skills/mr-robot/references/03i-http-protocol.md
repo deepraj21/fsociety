@@ -17,7 +17,7 @@ bypass front-door auth, leak another user's response.
   variants and the most likely against a local dev stack.
 - **Verify:** only a proxy *in the path* makes this real; an app directly serving
   requests cannot be desynced by itself. Confirm the topology before spending probes.
-- **Probe (bounded, local, ≤10 requests total):**
+- **Probe (bounded, local, ≤13 requests total):**
   ```
   # CL.TE probe — front-end uses CL, back-end uses TE. The "0\r\n\r\n" ends the
   # chunked body early for the back-end; anything after starts a new back-end request.
@@ -27,10 +27,11 @@ bypass front-door auth, leak another user's response.
   printf 'POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 6\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nG' | nc -q 1 localhost PORT
   ```
   Prefer the automated runner over hand-rolled probes: `scripts/desync-probe.sh <url>`
-  sends the CL.TE/TE.CL families (plain, hidden-tab, doubled, x-prefix) with marker
-  GET bodies and compares response counts *and* status sequences against the target's
-  own pipelined baseline — exit 1 = unsolicited/shifted responses (candidate desync),
-  exit 0 = uniform (expected for direct-only topology). See [03l](03l-traffic-interception.md)
+  sends the CL.TE/TE.CL/CL.0 families (plain, hidden-tab, doubled, x-prefix, raw
+  body) with marker GET bodies and compares response counts *and* status sequences
+  against the target's own pipelined baseline — exit 1 = unsolicited/shifted
+  responses (candidate desync), exit 0 = uniform (expected for direct-only
+  topology). See [03l](03l-traffic-interception.md)
   for the interception side (topology confirmation via a local proxy).
 - **Time oracle:** smuggle `GET /slow-path HTTP/1.1` (any route that takes >2s, e.g.
   a sleep/health endpoint) in the prefix; if the *next* connection's response is
@@ -42,6 +43,52 @@ bypass front-door auth, leak another user's response.
 - **Impact:** front-door auth bypass (smuggled request skips the authenticating
   proxy), queue poisoning, cache poisoning (below). Chain tags: `auth-bypass` when the
   proxy is the only gate. NO-GO-class when confirmed with a proxy in path.
+
+## Modern desync families — CL.0, h2c downgrade, 103 splitting, browser-origin (CWE-444)
+
+The 2024–26 staples the classic CL.TE/TE.CL probes never touch. Same discipline as
+above: topology first, marker-grade payloads only, candidate until the access log
+agrees.
+
+- **CL.0 (zero-content-length):** a hop honors `Content-Length` but *parses no body*
+  for that request — the body bytes become its next request on the connection.
+  - **Detect:** backend/framework that ignores request bodies on GET (Python
+    `http.server` does — the dev-proxy class), proxy rules that buffer POSTs but
+    pass GETs through raw, `Content-Length` present + no `Transfer-Encoding`.
+  - **Probe:** `scripts/desync-probe.sh` family 5 (raw marker GET as a
+    `Content-Length` body, no TE). A *direct* backend that ignores GET bodies flags
+    here — that is the CL.0 necessary condition, reported as candidate: any
+    queueing proxy in front turns it into cross-user response hijack.
+  - **Prove:** smuggling §Prove — the marker arrives as its own request on a later
+    connection's response (grep the access log).
+- **h2c / prior-knowledge downgrade:** a client speaks h2c upgrade or HTTP/2
+  prior-knowledge (`PRI * HTTP/2.0`) to a front-end that speaks HTTP/2 inbound and
+  HTTP/1.1 upstream — the H2.CL/H2.TE reinterpretation from the section above,
+  *on purpose* at the downgrade hop.
+  - **Probe (bounded, 2 requests):**
+    ```
+    curl -s -o /dev/null -w '%{http_version}\n' --http2-prior-knowledge http://localhost:PORT/
+    curl -s -o /dev/null -w '%{http_version}\n' http://localhost:PORT/   # baseline
+    # different routing/status between the two = two parsers active → H2.* variants live
+    ```
+    then the H2.CL/H2.TE nuclei templates against localhost only.
+- **103 Early Hints response splitting:** a proxy that *forwards* interim `103`
+  responses + an app that reflects input into `Link` headers = split a response
+  across users without touching `200`.
+  - **Probe (bounded, ≤4 requests):** capability first — does any `HTTP/1.1 103`
+    appear at all (`printf 'GET / HTTP/1.1\r\nHost: x\r\n\r\n' | nc -w 3 localhost PORT`
+    + grep `103`)? Then reflection: `curl -D- 'http://localhost:PORT/?x=mr-robot-poc'`
+    and check `Link:` carries the raw marker. Marker value only; a 103 with
+    attacker `Link` = candidate (`CWE-113`, chain with cache poisoning below).
+- **Browser-origin desync (no proxy required):** the browser reuses a keep-alive
+  connection to the app's origin; a poison prefix parked on that connection serves
+  the *next* request's response to the wrong party — client-side desync.
+  - **Detect:** keep-alive to origin + any reflection point + pages worth serving
+    to a wrong victim (error/login bodies).
+  - **Prove (localhost-only):** poison a loopback connection with a marker request,
+    then a second `fetch()` from a same-origin page must receive the marker's
+    response instead of its own. Never run this against origins you don't own
+    (it hijacks *other users'* requests by design).
 
 ## Web cache poisoning / deception — WSTG-ATHO-11 (CWE-349)
 
@@ -116,8 +163,9 @@ single-shot DoS proof, never a flood.
 
 ## Probe discipline
 
-Everything here is **localhost only**, capped (≤10 requests per desync family,
-≤5 per cache/Host/CRLF probe, 1–2 timed shots for ReDoS), non-state-changing, marker
+Everything here is **localhost only**, capped (≤13 requests total per desync run —
+3 baseline + 5 families × 2 — ≤5 per cache/Host/CRLF probe, 1–2 timed shots for ReDoS),
+non-state-changing, marker
 values only. Every desync/nc session closed; cache poisons purged and purge verified;
 nothing left behind. Record request+response excerpts — these proofs are
 header-level and belong verbatim in REPORT.md.

@@ -195,7 +195,7 @@ severity first:
    [03c](references/03c-ssrf-access-file.md), [03d](references/03d-supply-chain-backdoors.md),
    [03e](references/03e-business-logic.md), [03f](references/03f-llm-agentic.md),
    [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md),
-   [03i](references/03i-http-protocol.md) (smuggling, cache, Host, ReDoS),
+   [03i](references/03i-http-protocol.md) (smuggling, CL.0, cache, Host, ReDoS),
    [03j](references/03j-graphql-websocket.md), [03k](references/03k-oauth-oidc.md),
    [03l](references/03l-traffic-interception.md) (HAR audit, interception, cookie/token leakage),
    [03m](references/03m-saml-federation.md) (SAML SSO: XSW, unsigned assertions, replay),
@@ -232,7 +232,7 @@ guided by
   (≤20) and compares responses — divergence is the signal; uniform results are not
   proof of safety (say so in the report).
 - **Desync probes** (03i/03l): if a proxy sits in the path, `scripts/desync-probe.sh`
-  sends 11 bounded framing probes (CL.TE/TE.CL families, marker GET bodies only)
+  sends 13 bounded framing probes (CL.TE/TE.CL/CL.0 families, marker GET bodies only)
   and compares response counts *and* status sequences against the target's own
   baseline — unsolicited or shifted responses are the signature. Direct-only
   topology is an expected uniform result; say so rather than overclaiming.
