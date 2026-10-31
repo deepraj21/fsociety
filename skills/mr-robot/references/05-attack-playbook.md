@@ -80,7 +80,7 @@ live-only endpoints get active probing.
 
 ## 6 — Exploit the enumerated surface (harmless-marker payloads only)
 
-Per endpoint, pick the class from its shape — catalogs 03a–03o have the full test
+Per endpoint, pick the class from its shape — catalogs 03a–03p have the full test
 steps. Fast patterns:
 
 ```bash

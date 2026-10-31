@@ -127,6 +127,12 @@ it only takes a hop: any place where ≥2 parsers touch input is a candidate.
   - **Param/JSON:** duplicate keys (`{"id":1,"id":2}` — validator reads first, app
     reads last), `id=1` vs `id[]`, content-type sniffing (`text/json` vs `application/json`
     accept/deny), charset layers (`UTF-7`, BOM) shifting parse boundaries.
+  - **Multipart:** boundary quirks (missing/duplicate boundary, `boundary=` in
+    param vs header), `filename` vs `name` field confusion (`name="avatar";
+    filename="../../x"` — one parser keys the field, the other the filename;
+    also `filename*=` RFC 5987 vs plain `filename`), part-header smuggling past
+    WAFs that don't reassemble. ≤5 requests; cross-links [03c](03c-ssrf-access-file.md)
+    upload lane and [03p](03p-grpc-sse.md) JSON↔proto transcoding.
   - **XML vs HTML:** namespace/entity handling disagreement feeding XXE (03a) —
     one parser resolves entities the other ignores.
   - **HTTP layer:** CL/TE/Host — already covered by the smuggling sections above.
