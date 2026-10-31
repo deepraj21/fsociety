@@ -38,6 +38,52 @@ before recording `status: confirmed`.
 - **Prove:** payload proving expression evaluation: `{{7*7}}` → `49` (SSTI) or
   `__import__('os').popen('echo mr-robot-poc').read()` — run only the marker echo.
 
+## Expression-language injection & JNDI — the Java-stack expression class (CWE-917/74)
+
+SSTI's siblings on the JVM: an *expression language* evaluates attacker input
+directly — no template file needed — and JNDI turns an evaluated string into a
+fetch that has historically been the RCE step (Log4Shell class). Detect them
+**before** guessing SSTI, since the probes and the fixes differ.
+
+- **EL injection — SpEL / OGNL / MVEL / JSP EL (CWE-917):**
+  - **Detect:** Spring `@Value("#{...}")`/`SpelExpressionParser.parseExpression(`
+    on request data, Struts OGNL (`%{}`, `${}` in struts tags, value stack from
+    params), MVEL `Mvel.eval(`, JSP `${param.x}`/`#{}` in unguarded contexts,
+    Thymeleaf `th:utext` with expression pre-processing (`__${...}__`), Actuator/
+    Spring Cloud Function routing (`spring.cloud.function.routing-expression`) —
+    famous sinks where the *whole* expression comes from the request.
+  - **Prove (marker-grade, ≤4 requests):** arithmetic marker first —
+    `#{7*7}` / `${7*7}` / `%{7*7}` → `49` in the response or its error; then
+    stop, or one harmless command-equivalent for the engine's known safe
+    primitive (SpEL `T(java.lang.Runtime)` chain is **not** run — the arithmetic
+    proof + engine fingerprint is the finding, same RCE-unproven rule as SSTI).
+    Error-based when output is swallowed: force the evaluation result into the
+    exception (03a SSTI error-based recipe applies verbatim).
+  - **Impact:** expression eval = RCE-grade *potential* (`rce-chain` candidate);
+    severity = engine + context (function-routing sinks are the wild-RCE CVEs).
+    Fix: never parse expressions from input, literal-only templates (06).
+- **JNDI / LDAP injection + Log4Shell class (CWE-74/917):**
+  - **Detect:** `InitialContext.lookup(user_input)`, `ctx.lookup(` with string
+    concat, `${jndi:` / `${ctx:` / `${env:` / `${lower:` lookup patterns in
+    **logging** paths (log4j2 `MessagePatternConverter` pre-2.17, logback
+    `insertToLookup`, log4j 1.x JMSAppender), JNDI references in config, any
+    `java:`/`ldap:`/`rmi:`/`dns:` URL from request data.
+  - **Prove (bounded, zero-egress):** never point a lookup at an external host.
+    Start a **local listener** (`nc -l 8081` on loopback) and — only if the app
+    itself performs a JNDI lookup on attacker input — pass
+    `ldap://127.0.0.1:8081/mr-robot-poc` as the marker URL; arrival of the
+    lookup (connection bytes at your listener) proves the injection channel.
+    For the *log-corruption* variant, write the marker `${jndi:ldap://127.0.0.1:8081/poc}`
+    into one field you own (username/search) and observe the app's log triggering
+    the local lookup — ≤2 probes, one listener, closed after. **No remote class
+    loading, no serialized gadget return, no jar hosting** — connection arrival
+    is the whole proof; version rows (fixed ranges) belong to [03n](03n-known-cves.md)
+    watchlist discipline if a version match also exists.
+  - **Impact:** unauthenticated log-triggered lookup = potential RCE (CVE-2021-44228
+    class) → `rce-chain` candidate, NO-GO when confirmed reachable; auth-path
+    injection → same lane. Fix: upgrade/disable message lookups, egress filtering
+    as defense-in-depth (06).
+
 ## Server-Side Template Injection (SSTI) — CWE-1336 (WSTG-INJT-18)
 
 - **Detect:** user input into `render_template_string`, `Template(...)`, Jinja/Twig/Freemarker/
@@ -183,6 +229,14 @@ redirect — [03c](03c-ssrf-access-file.md)) into a script that can *talk to* th
 - **Verify:** does attacker-controlled data (cookie, file, queue message) reach it?
 - **Prove:** a `__reduce__`/gadget that runs `echo mr-robot-poc`-equivalent (print marker)
   — never a reverse shell; the payload's *existence* + marker output proves RCE.
+- **Java gadget chains:** on `ObjectInputStream`/XStream/Jackson-databind
+  (`enableDefaultTyping`)/Hibernate/Hessian sinks, the payload is a *gadget
+  chain* (`ysoserial`-style) — detect the vulnerable gadget library versions in
+  the dependency tree first (commons-collections ≤3.2.1, spring-beans, etc. →
+  pair with [03n](03n-known-cves.md)); prove the same way as the reduce above —
+  a marker-printing chain (`echo mr-robot-poc`), run once against a localhost
+  target, never a reverse shell. XStream/Jackson type-typing acceptance itself
+  (any-type deserialization) is already a finding without firing a gadget.
 
 ## XML external entities (XXE) — CWE-611 (WSTG-INJT-19)
 

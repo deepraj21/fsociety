@@ -65,6 +65,27 @@ importers, PDF/report generators, PDF/URL previewers, `requests.get(user_url)`,
      real webshell; then delete the uploaded file and **verify deletion**.
   3. SVG/HTML upload → stored XSS when rendered (cross-link 03a).
   4. Polyglot (valid image + PHP) bypasses content checks.
+- **Media-parser / ImageTragick lane (CWE-434/78):** the upload is "just an image"
+  but a *server-side processor* parses it — ImageMagick/GraphicsMagick delegates,
+  Ghostscript, PIL/`wand`, libvips, `thumbor`, ffmpeg thumbnails — and the format
+  carries **instructions**, not just pixels.
+  - **Detect (source):** `imagemagick`/`magick`/`convert`/`gm convert` shell-outs,
+    `wand.image`, `Image.open` + `PIL` filters on user files, Ghostscript (`gs`,
+    `pdf2ps`) on uploads, `thumbor`/`imgproxy` config, delegate lists in
+    `policy.xml`/`delegates.xml`; any thumbnail/EXIF/re-encode worker.
+  - **Prove (marker-grade, local only, ≤3 runs):** craft an MVG/SVG/PS-laced image
+    whose *text primitive* writes or reads a marker — e.g. MVG `push graphic-context`
+    + `text 0,0 'mr-robot-poc'` aimed at a **temp file you own**, or the classic
+    `url(https://…)` fetch redirected to your loopback listener — then show the
+    marker file/arrival produced *by the image processor*. Run the conversion
+    yourself against the repo's own handler function or one upload; never a
+    reverse shell, never `pipe:` command delegates, no exfil URLs (loopback only).
+    Delete the marker artifact and verify deletion.
+  - **Impact:** image-controlled command/file primitive → `rce-chain` candidate
+    (CVE-2016-3714 class — keep versions/advisory rows in [03n](03n-known-cves.md)
+    watchlist discipline); Ghostscript `-dSAFER` escapes historically = same grade.
+    Fix: delegate-less policy, `magick` hardened policy, libvips/sandboxed
+    re-encode (06).
 - **Zip slip — archive extraction traversal (CWE-22):** any handler that *extracts*
   an uploaded archive (zip/tar/jar/war — import bundles, theme/plugin uploads,
   backup restores) and joins entry names onto a target dir without sanitizing

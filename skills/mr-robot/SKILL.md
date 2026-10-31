@@ -198,9 +198,9 @@ severity first:
    = cloud metadata theft; low-sev info leak + missing authz = full account takeover).
    Chains are the "criticals" that single-finding scanners miss — record them as
    findings with `tags` reflecting the end state.
-5. Work the applicable catalogs: [03a](references/03a-injection.md) (SQLi, SSTI, Unicode, juggling, CSP bypass/smuggling, DOM clobber, HTML inj),
+5. Work the applicable catalogs: [03a](references/03a-injection.md) (SQLi, SSTI/EL/JNDI, Unicode, juggling, CSP bypass/smuggling, DOM clobber),
    [03b](references/03b-auth-gateway.md) (auth, dictionary, gateway bypass, cookies, passkeys/MFA),
-   [03c](references/03c-ssrf-access-file.md) (SSRF: redirect loops, traversal, upload, zip slip), [03d](references/03d-supply-chain-backdoors.md),
+   [03c](references/03c-ssrf-access-file.md) (SSRF: redirect loops, traversal, upload/zip-slip/media), [03d](references/03d-supply-chain-backdoors.md),
    [03e](references/03e-business-logic.md) (flows, ORM/search leaks, API abuse), [03f](references/03f-llm-agentic.md),
    [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md),
    [03i](references/03i-http-protocol.md) (smuggling, CL.0, parser diffs, cache, H2/DoS, Host, ReDoS),
