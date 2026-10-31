@@ -199,7 +199,8 @@ severity first:
    [03j](references/03j-graphql-websocket.md), [03k](references/03k-oauth-oidc.md),
    [03l](references/03l-traffic-interception.md) (HAR audit, interception, cookie/token leakage),
    [03m](references/03m-saml-federation.md) (SAML SSO: XSW, unsigned assertions, replay),
-   [03n](references/03n-known-cves.md) (known exploited CVEs: fingerprint → verify → prove).
+   [03n](references/03n-known-cves.md) (known exploited CVEs: fingerprint → verify → prove),
+   [03o](references/03o-xs-leaks.md) (XS-leaks: ETag/length, connection-pool, frame & timing oracles).
 
 **4b. Live exploitation** (Phase 0 required — local instance + user confirmed):
 
@@ -384,6 +385,7 @@ reading the patch alone.
 | `references/03m-saml-federation.md` | SAML SSO present (assertions, IdP/SP metadata, saml/opensaml deps) |
 | `references/03l-traffic-interception.md` | HAR capture to audit, proxy in path, TLS/cookie/token leakage questions |
 | `references/03n-known-cves.md` | framework/runtime versions in scope → verify known exploited CVEs (React2Shell, PHP2Shell, middleware bypass) |
+| `references/03o-xs-leaks.md` | cross-origin state questions (account existence, redirect targets, activity) → side-channel oracle recipes |
 | `references/04-report-template.md` | Phase 6 — writing the report |
 | `references/06-remediation.md` | Phase 7 — proposing/validating fixes per finding family |
 | `references/07-ci-sarif.md` | CI gates, SARIF export, KEV enrichment |

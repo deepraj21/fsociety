@@ -87,6 +87,7 @@ PYEOF
 if [ "$g2" = ok ]; then
   for f in SKILL.md references/03a-injection.md references/03m-saml-federation.md \
            references/03l-traffic-interception.md references/03n-known-cves.md \
+           references/03o-xs-leaks.md \
            references/08-local-daemons.md references/09-fuzz-binary.md \
            references/04-report-template.md \
            scripts/scan-all.sh scripts/desync-probe.sh scripts/har-audit.mjs \

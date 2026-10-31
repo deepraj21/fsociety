@@ -27,7 +27,9 @@ Order matters — cheap proofs first:
    ```
    **Findings from the run:** was `admin` protected by a strong password? (no = high);
    was there *no lockout/rate limit*? (no = medium-high, A07:2025); does the response
-   differ for unknown-user vs wrong-password? (= enumeration, low-medium).
+   differ for unknown-user vs wrong-password? (= enumeration, low-medium;
+   when the check must happen cross-origin without contact, the oracle recipes
+   are in [03o](03o-xs-leaks.md)).
 4. **Password policy** (static): min length, complexity rules, breach-list checks in
    register/reset flows; `HaveIBeenPwned` k-anonymity usage.
 5. **Reset flow** (WSTG-ATHN-09): token entropy, expiry, single-use, host-header-poisoned

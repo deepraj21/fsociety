@@ -94,6 +94,8 @@ agrees.
 
 Unkeyed input (headers the cache ignores when hashing) poisons a response other
 users then receive; deception makes a victim's cache store *your* response.
+Observing *whether* the victim's browser touched a cached URL is the cross-origin
+side of the same coin — cache-probe XS-search lives in [03o](03o-xs-leaks.md).
 
 - **Detect:** any cache in path (CDN, nginx `proxy_cache`, Varnish, Next.js
   `unstable_cache`, Redis/response caches in app code keyed on URL only).
