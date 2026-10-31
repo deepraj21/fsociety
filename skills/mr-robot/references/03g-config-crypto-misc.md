@@ -15,6 +15,18 @@ findings.json — your job is the ones tools miss and the triage.
   volumes, no MFA on root (checkov covers most — verify the *high* ones in source).
 - **Containers:** privileged, `hostNetwork`, running as root (`USER` missing), secrets in
   `ENV`/layers, latest tags, no read-only rootfs (local rule `mr-robot-yaml-privileged-container`).
+  - **Runtime sockets & identities (the escalation staples):** `docker.sock`
+    mounted into any container/service (`/var/run/docker.sock:/var/run/docker.sock`,
+    `volumes: - /var/run` in compose, socket-proxy services) = container→host root
+    (`docker run -v /:/host` from inside); k8s service-account token auto-mounted
+    at `/var/run/secrets/kubernetes.io/serviceaccount/token` with a role allowing
+    `secrets`/`pods/exec`/`wildcard` verbs = cluster-grade escalation; hostPath
+    mounts of `/`, `/etc`, SSH dirs; `automountServiceAccountToken: true` on
+    workloads that need no API. Detect in compose/k8s manifests + Dockerfiles
+    (checkov/trivy flag many — verify the *high* ones in source, same rule as
+    the Cloud/IaC row above). Report as container-escape/secrets exposure
+    (`rce-chain` when combined with a writeable host mount); 01 feeds the
+    manifest inventory.
 - **Secrets hygiene** (A07 cross): gitleaks hits — verify they're not *live* creds (rotate
   regardless); `.env` committed; keys in docs/fixtures.
 - **HTTP server config in repo:** directory listing on, server/version headers leaking,

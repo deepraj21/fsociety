@@ -185,6 +185,25 @@ side of the same coin — cache-probe XS-search lives in [03o](03o-xs-leaks.md).
     Next.js (or Rails/Django with page caching), pair any staleness finding with
     [03n](03n-known-cves.md) known cache-key/routing CVEs and keep
     `status: candidate` until the stale body reproduces twice.
+- **ESI (edge-side includes) — the edge executes markup (CWE-80/918):** CDNs and
+  edge runtimes (Akamai, Varnish `ESI`, Fastly, Cloudflare Workers' ESI-ish
+  templating) *process* `<esi:include src="…">`/`<!--esi … -->` in cached
+  responses — so attacker-writable content that reaches a cached page becomes
+  instructions the edge fetches or inlines.
+  - **Detect:** `Surrogate-Control: content="ESI/1.0"`/`ESI-Include` response
+    headers (the edge announcing ESI processing), `esi` in Varnish/Akamai/Fastly
+    configs or templates in-repo, `<esi:` in any server-generated markup.
+  - **Prove (bounded, ≤5 requests, marker only):** get ONE stored marker include
+    — `<esi:include src="http://127.0.0.1:PORT/mr-robot-poc-esi">` — into content
+    you own (comment/bio); fetch the page **through the edge path** and show the
+    include *resolved* (marker URL fetched from your loopback listener, or the
+    fetched body inlined). Two grades: `src` fetching a URL you choose = edge-side
+    fetch (SSRF-adjacent → chain tags `ssrf`, [03c](03c-ssrf-access-file.md));
+    inlining script/HTML into the page = stored-XSS grade (→ [03a](03a-injection.md)).
+    No internal-target srcs (loopback marker only), one include, purge/verify after.
+  - **Impact:** medium alone; high when the edge fetch reaches internal URLs or
+    the inlined markup executes in others' sessions. Fix: strip `esi` markers
+    from user-writable output, disable ESI on personalized content (06).
 
 ## Host-header attacks — CWE-644 (WSTG-ATHN-09, INJT-03)
 
@@ -270,12 +289,46 @@ never the outage.
   gap + one bounded mechanism run. Never report DoS from a flood you actually ran;
   remediation configs live in [06](06-remediation.md).
 
+## HTTP/3 / QUIC — detection & configuration surface (CWE-319/400)
+
+QUIC folds TLS into the handshake and moves loss recovery to the app layer —
+the attack surface is *configuration*, not a new probe grammar. Local testability
+is limited (most local stacks are h1/h2), so this lane is detection-first and
+says so honestly.
+
+- **Detect (Phase 1, passive/config):**
+  - **Advertisement:** `Alt-Svc: h3=":443"`/`h3-29` on any response = QUIC is
+    offered (one `curl -sI` per host); `listen … quic`/`http3 on` in nginx
+    (≥1.25), `http::protocol h3` in Envoy/Caddy, LB h3 listeners (CloudFront/
+    ALB h3 toggles), UDP/443 open beside TCP/443 (`daemon-sweep.sh` already
+    covers the local-port half — [08](08-local-daemons.md)).
+  - **Server config in repo:** quic listener blocks, `ssl_protocols`/QUIC TLS
+    min versions, 0-RTT/early-data settings (`early_data`, `enable_0rtt`),
+    migration/connection-ID limits.
+- **Config findings (source, no live flood):**
+  - **0-RTT replay (CWE-294):** early-data enabled on *state-changing* endpoints
+    — a captured 0-RTt flight replays (GET-safe only by policy, not by protocol).
+    Flag when `early_data`/`0-RTT` is on with no anti-replay window in config;
+    proven only if the stack in scope replays — ≤2 requests, marker body.
+  - **QPACK/header handling:** header-table size and dynamic-table settings
+    reachable from client input are the QPACK analogues of HPACK continuation —
+    config row only (the DoS rules above apply; **never** a QPACK flood).
+  - **Version/ downgrade:** deprecated draft versions accepted, version-negotiation
+    abuse left open — config observation.
+- **Capability honesty:** if `curl --http3` (or `nghttp3`/`quiche` tooling) is
+  **not installed**, record `h3: not testable locally — config rows only` in the
+  coverage ledger; do not install exotic toolchains for this lane. One capability
+  request max when it *is* present (a single h3 GET to localhost).
+- **Report:** config findings `low–medium` (A02:2025); 0-RTT on state-changing
+  routes `medium`; never report QUIC DoS from traffic you generated — the H2
+  section's "prove the mechanism, never the outage" rule applies verbatim.
+
 ## Probe discipline
 
 Everything here is **localhost only**, capped (≤13 requests total per desync run —
 3 baseline + 5 families × 2 — ≤5 per cache/Host/CRLF/parser-diff probe, 1–2 timed
 shots for ReDoS, one ≤10-hop redirect-loop chain, ≤3 CONNECT probes + ≤10 stream
-cancels for the H2 families),
+cancels for the H2 families, ≤5 for ESI, one capability request for HTTP/3),
 non-state-changing, marker
 values only. Every desync/nc session closed; cache poisons purged and purge verified;
 nothing left behind. Record request+response excerpts — these proofs are
