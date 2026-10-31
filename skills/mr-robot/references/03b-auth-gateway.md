@@ -141,6 +141,53 @@ attacker's value where it expected its own.
   `__Host-` prefix everywhere + `SameSite` + never trust domain-wide cookies for
   auth ([06](06-remediation.md)).
 
+### WebAuthn / passkeys — the 2025/26 factor (WSTG-ATHN-11/12 · CWE-345/287)
+
+Passkeys are now the default second factor, and the ceremony has its own trust
+bindings — checking "MFA: yes" in a report is no longer enough. Verify the
+ceremony's *bindings* statically first; live checks only run against your own
+registered credential on localhost.
+
+- **Detect (source):** `navigator.credentials.get/create`, `webauthn` libs
+  (`@simplewebauthn`, `webauthn-json`, Python `fido2`, Java `webauthn-server`),
+  server verify calls — `verifyAuthenticationResponse`/`verifyRegistrationResponse`
+  (simplewebauthn), `verify_get_response`, RP config (`rpId`, `origins`,
+  `expectedOrigin`); recovery-code endpoints beside the passkey routes.
+- **Verify (ceremony bindings — the four that matter):**
+  1. **Origin/RP-ID pinning:** `expectedOrigin`/`origins` is an *allowlist*, not
+     `window.location.origin` echo or `*`; `rpId` = the real registrable domain
+     (an attacker page on a sibling subdomain must fail). Echo-or-wildcard = the
+     ceremony accepts cross-site assertions = **bypass** (high).
+  2. **User verification (UV):** `userVerification: "required"` on *authentication*
+     — `"discouraged"`/missing lets a device-screen-lock-less assertion through;
+     distinguish UV from UP (presence) in the stored `flags`.
+  3. **Registration re-auth:** enrolling a new passkey demands an *existing* factor
+     first (session + password/existing-passkey step-up) — a session-only enroll =
+     one stolen session → persistent second factor (chain with the AiTM posture
+     subsection above → `account-takeover`).
+  4. **Recovery codes:** single-use (server-side consume), entropy ≥80 bits, no
+     enumeration oracle on redeem, unused codes die when the user rotates; the
+     classic shortcut (`?mfa=0` row in §2 applies here too).
+- **Prove (own test account, localhost, ≤4 ceremony steps):** source evidence of a
+  violated binding is the primary proof — paste the config/verify-call excerpt.
+  The only live step: register + authenticate your *own* passkey against a locally
+  started target and demonstrate the violated check (e.g. accepting an assertion
+  while Origin comes from a forged-`Origin` request = the allowlist gap). No
+  assertion forgery tooling, no COSE-key tampering — the config seam is the
+  finding. `status: candidate` until the excerpt + one live step agree.
+- **Impact:** origin/UV gap → cross-site assertion acceptance = full second-factor
+  bypass (`auth-bypass`, NO-GO); enroll-without-step-up → persistent ATO;
+  recovery weakness → same. Fix: strict allowlist + `required` UV + step-up on
+  enroll ([06](06-remediation.md)).
+- **MFA push fatigue (CWE-307):** push-based MFA with no rate limit/number-match
+  — the attacker who has the password spams approve-prompts until the user taps.
+  **Detect (source):** push provider config (Firebase Auth, Duo, Okta verify
+  flow) with no attempt cap, no number-matching, no cooldown between sends.
+  **Probe (bounded, own account, ≤3 pushes):** trigger at most three consecutive
+  push attempts against *your own* registered device — three delivered without
+  lockout/cooldown = the lane exists (medium-high; no third-party devices, ever).
+  Fix: number-match + attempt cap + lockout + alerting (06).
+
 ## PoC discipline
 
 Every proof = harmless marker or observable state difference on **localhost**; record the
