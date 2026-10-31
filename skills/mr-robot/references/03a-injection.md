@@ -72,6 +72,60 @@ before recording `status: confirmed`.
 - **Prove:** `"><script>/*mr-robot-poc*/</script>` reflected verbatim → reflected XSS;
   for DOM: show the sink evaluates attacker-controlled `location` data.
 
+## CSP bypass & payload delivery — getting the payload past the defense (CWE-1021 · WSTG-CLNT-01)
+
+XSS with no CSP is a solved problem — modern apps ship a policy, so the finding
+*proves itself* by surviving one. 03b checks CSP **presence**; this is the bypass
+discipline that turns "CSP blocks it" into "CSP does not block it":
+
+- **Detect (source):** the policy itself (`Content-Security-Policy` header,
+  `<meta http-equiv>`, framework defaults — Django `CSP_`, Helmet, Rails
+  `content_security_policy`), nonces/hashes on script tags, `report-uri`/
+  `report-to` endpoints, `TrustedTypes` sinks, JSONP endpoints, `<base>` in pages
+  whose relative script/asset URLs the attacker can influence.
+- **Bypass lanes (bounded, ≤6 requests per lane, marker payloads):**
+  1. **Nonce/hash weaknesses:** nonce echoed into the page (reflected nonce =
+     policy forfeited), nonce *reuse* across responses (prime → reuse), hash
+     allowing a gadget inline (`'sha256-…'` matching attacker-reachable inline).
+  2. **`strict-dynamic` gadget chain:** when `strict-dynamic` is on, a *allowed*
+     script that passes attacker data to a sink (`innerHTML`, `location`,
+     `JSON.parse`→merge) is the bypass — probe the reflected marker through that
+     sink; the policy itself allows the chain it enables.
+  3. **JSONP gadget:** a JSONP endpoint under the CSP's allowed script origins
+     (`'self'` + JSONP host) serving `?callback=<marker>` — `<script src=…>` with
+     attacker callback executes under the policy. Pair with JSONP theft below.
+  4. **Base-tag / relative-URL hijack:** inject `<base href="http://127.0.0.1:OTHER/">`
+     (marker port) into a page with relative `<script src=…>`/`<img>` — the
+     browser resolves assets to the attacker origin *within* the policy.
+  5. **Report-only downgrade:** `Content-Security-Policy-Report-Only` on a
+     sensitive page = no enforcement, only telemetry — record as config finding
+     (A05) even without a working bypass.
+  6. **JSONP/CORS data theft (no XSS needed):** a JSONP endpoint with reflected
+     callback reads authenticated JSON cross-origin from *your* page — ≤4 probes
+     with `callback=mr-robot-poc`; impact = credential-data theft, `authz-bypass`
+     when the data is another user's.
+- **HTML smuggling (delivery, not execution):** stored/reflected *content* that the
+  browser turns into a file the user opens — `data:`/Blob download links, `<a
+  download>` with a JS-generated payload, HTML-in-HTML (`<iframe srcdoc>`). Prove
+  with a marker-named download (`mr-robot-poc.html` content carries `mr-robot-poc`)
+  on your own record only; impact lands at the *endpoint* (payload past
+  gateways/scanners into the opening user — a delivery channel for the payload
+  above, not a new code-execution bug).
+- **CSS injection → attribute-selector exfil (the injection half of 03o):** when
+  `<style>`/attribute injection exists without script, `input[value^=a]`-style
+  attribute selectors + a `background:url(...)` per guess exfiltrate secrets
+  (CSRF tokens, inputs) one character at a time — the *same oracle bit* 03o
+  models cross-origin, but here the attacker's CSS sits in the page. Prove
+  **locally and bounded**: one marker value, ≤2 selector chars, one request to
+  your loopback listener — demonstrate the channel, never a real value sweep.
+  Report severity via what the value protects (token → `csrf`/`auth-bypass` chain).
+- **Bounds:** ≤6 requests per bypass lane, one lane at a time, marker payloads
+  (`mr-robot-poc`) only, loopback listener for any exfil callback; every lane is
+  `candidate` until the payload demonstrably executes/reads under the policy.
+- **Impact/fix:** bypass → same tags as the underlying XSS/JSONP theft;
+  remediation = nonce-per-response, drop `unsafe-inline`/`unsafe-eval`, restrict
+  script-src to hashed/nonced only, `require-trusted-types-for` — [06](06-remediation.md).
+
 ## DOM clobbering & postMessage / iframe sandbox (CWE-1321-adjacent · CWE-346 · WSTG-CLNT-01)
 
 Browser-side logic bugs where the *page's own structure* becomes the attack input —

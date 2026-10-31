@@ -81,8 +81,11 @@ Two-account methodology (create both locally):
   verb/host variation, alternate endpoints (login vs `/api/login` vs GraphQL) without limits.
 - **CORS** (WSTG-CLNT-07): `Access-Control-Allow-Origin: *` with credentials, null-origin
   accepted, regex `*.evil.com` gap, preflight permissive.
-- **Security headers** (WSTG-CONF-07/12/14): HSTS, CSP (no `unsafe-inline`/`unsafe-eval`),
-  `X-Frame-Options`/frame-ancestors (clickjacking), `X-Content-Type-Options`, cookies flags.
+- **Security headers** (WSTG-CONF-07/12/14): HSTS, CSP (no `unsafe-inline`/`unsafe-eval` —
+  presence alone isn't the finding: the bypass lanes — nonce reuse, strict-dynamic
+  gadgets, JSONP/base-tag — live in [03a](03a-injection.md) "CSP bypass & payload
+  delivery"; report-only downgrade counts), `X-Frame-Options`/frame-ancestors
+  (clickjacking), `X-Content-Type-Options`, cookies flags.
 - **CSRF** (CWE-352, MITRE #3): state-changing endpoints lacking token/`SameSite`,
   GET side effects, JSON endpoints accepting form-encoded cross-origin.
 - **Proxy/WAF config in repo:** nginx `location` regex gaps, trailing-slash bypasses,
