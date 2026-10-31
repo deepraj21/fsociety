@@ -143,6 +143,24 @@ side of the same coin — cache-probe XS-search lives in [03o](03o-xs-leaks.md).
   **verify the purge** (cleanup is part of the PoC).
 - **Deception variant:** `X-Original-URL` / `X-Rewrite-URL` accepted by the cache but
   ignored by the app → cache stores a 200 for a URL the app never serves.
+- **Internal/framework caches (Top-10 #6 — "the stale elixir"):** not every cache
+  is an edge — Next.js ISR/`revalidate`/`unstable_cache`, Rails page/action caching,
+  Django cache middleware, and app-level response memoization persist poisoned
+  bodies *inside the origin*, often keyed looser than the app's own routing.
+  Poisoning here survives an edge purge and needs no proxy in the path.
+  - **Detect:** `revalidate`/`unstable_cache`/`generateStaticParams` + ISR docs,
+    framework cache decorators, response memoization keyed on URL; `Cache-Control`
+    emitted by app code rather than the edge; stale-while-revalidate windows.
+  - **Prove (bounded, localhost):** poison via one unkeyed input → attempt the edge
+    purge (or wait out max-age) → a fresh cookieless request STILL serves the
+    poisoned body = internal-cache finding. Clearing it with a rebuild/restart is
+    the remediation proof — record both. ≤10 requests + 1 purge attempt + 1
+    verification, marker payload only, state restored after.
+  - **Chains (why this ranked #6):** internal cache + routing/serialization quirks
+    compose into full-page-takeover chains in framework repos — when the stack is
+    Next.js (or Rails/Django with page caching), pair any staleness finding with
+    [03n](03n-known-cves.md) known cache-key/routing CVEs and keep
+    `status: candidate` until the stale body reproduces twice.
 
 ## Host-header attacks — CWE-644 (WSTG-ATHN-09, INJT-03)
 

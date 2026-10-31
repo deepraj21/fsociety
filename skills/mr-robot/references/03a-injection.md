@@ -105,6 +105,30 @@ Any endpoint parsing XML/SOAP/SVG/XLSX/parsers-with-DTD: `ElementTree` (pre-3.8
 - **Variants:** XInclude (`xi:include`), XSLT stylesheet injection (SSTI-adjacent,
   cross-link above), SVG `xlink:href` fetches (SSRF cross-link 03c).
 
+### SOAP/WSDL attack surface — the generated-client class (Top-10 #5, SOAPwn)
+
+Beyond XXE-*in* SOAP: frameworks that build HTTP client proxies *from fetched WSDL*
+turn attacker-shaped metadata into code the server then runs (.NET
+`HttpWebClientProtocol` lineage — one unfixed Microsoft flaw became an RCE sink
+across products, per watchtowr's whitepaper). Endpoint URLs, serializers, and
+bindings all come from the WSDL — the proxy is the parser *and* the client.
+
+- **Detect:** generated proxies in-repo (`svcutil`/`wsdl.exe` output, `.svcReference`,
+  `ServiceModel`, JAX-WS `@WebServiceRef`, PHP `SoapClient(` with `stream_context`),
+  server-side fetches of `?wsdl=` URLs, import-WSDL build steps, legacy `.asmx`/
+  `.svc` routes.
+- **Prove (marker-grade, localhost):** serve a *harmless* WSDL from loopback whose
+  service/operation names carry `mr-robot-poc`, point any in-scope "import WSDL"
+  path at it, and show the marker arriving in generated endpoint URLs, build logs,
+  or runtime error messages — that reflection *is* the proof the proxy consumes
+  attacker WSDL. ≤5 requests; no malicious operations, no payload bindings — if no
+  WSDL-import feature exists in scope, record surface availability only.
+- **Impact:** the WSDL fetch itself is SSRF (→ [03c](03c-ssrf-access-file.md));
+  DTDs inside WSDL are XXE (above); attacker-chosen operation endpoints = request
+  routing to internal URLs, worst case serializer/gadget chains → `rce-chain`
+  candidate. Advisory rows belong in [03n](03n-known-cves.md)'s *watchlist*
+  discipline — ranges only from the vendor advisory.
+
 ## Prototype pollution — CWE-1321 (WSTG-INJT-22)
 
 - **Detect:** recursive merges without key filtering: `_.merge/defaultsDeep`,

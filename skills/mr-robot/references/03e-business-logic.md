@@ -32,6 +32,35 @@ For each business flow: write the *intended* sequence → break it.
   confusion (`amount=100` cents vs units), webhook signature not verified (Stripe/ PayPal
   `verify_signature` skipped → forge `payment_succeeded`), replayed webhook, refund > charge.
 
+## ORM / search-filter data leaks (Top-10 #2 — "more than you joined for")
+
+As SQLi-as-dumping-tooling fades, the *legitimate* query layer becomes the leak:
+ORM search/filter/sort APIs let the caller ask for more than the UI ever shows —
+nested includes, relation traversal, operators the interface never emits.
+
+- **Detect:** list/search endpoints driven by ORM query builders — `?include=`,
+  `?expand=`, `?with=` (Django `select_related`/`filter` lookups, Rails `includes`,
+  Prisma `include`, Eloquent `with`), `$filter`/`$expand`/`$select` (OData),
+  sort/filter params hitting relation columns, GraphQL selection sets (→ 03j).
+- **Probe (bounded, own/fixture rows):**
+  1. **over-fetch:** request a nested relation the UI never renders
+     (`include=roles`, `expand=owner.address`, `fields=users.password`) → if it
+     serializes back, the join leaked;
+  2. **error-guided schema recovery:** malformed include/sort/filter
+     (`include=notacolumn`, `sort=secret.$desc`) → verbose ORM/SQL errors map
+     tables and column names (feed the result to 01 recon);
+  3. **filter-operator extraction:** operators beyond the UI's equality
+     (`role__ne=`, `email__contains=`, `id__gt=`) on relation fields → boolean or
+     ordered extraction through filters the interface can't express; if responses
+     are uniform, run it as a timing/error oracle per [03o](03o-xs-leaks.md).
+- **Bounds:** ≤12 requests per endpoint; read *your own* fixture rows to prove the
+  class — touching another user's row via an operator proves impact in ONE bit,
+  then stop (no bulk enumeration; that's 03b BOLA territory with data exfil).
+- **Impact:** sensitive-column disclosure (PII, roles, tokens, password hashes)
+  → high; relation traversal skipping ownership = `api-bola`/`authz-bypass`
+  (→ [03b](03b-auth-gateway.md) §3); schema errors → recon. Fix: serializer-level
+  field allowlists, no operator passthrough, per-object authorization (06).
+
 ## API Top 10 cross-check (OWASP API1–10:2023)
 
 | ID | Test | Where |

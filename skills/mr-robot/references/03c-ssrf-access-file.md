@@ -22,6 +22,20 @@ importers, PDF/report generators, PDF/URL previewers, `requests.get(user_url)`,
   `2130706433`(decimal) vs `0x7f000001` vs `127.1`; `@` confusion (`evil.com@127.0.0.1`);
   DNS rebinding; redirect to metadata after allowlisted domain; `file:///etc/passwd`;
   scheme mix (`gopher://`, `dict://`).
+- **Blind → visible with redirect loops (Top-10 #3):** a fetcher that follows
+  redirects leaks *how far it got* when you hand it a loop you control:
+  - **Probe (bounded, localhost):** start a local redirector on loopback
+    (`/r?n=N` → `302 Location: /r?n=N+1`, counter in the path) and pass it as the
+    fetch target. The client's final error distinguishes graded states no blind
+    boolean can: *connection refused* (never left the validation stage) vs
+    *too many redirects* after N hops (reached and followed you — and N reveals
+    the client's redirect budget) vs a marker arriving at your listener (full
+    visibility). Pair with the allowlist-bypass redirect above to learn *which*
+    hop the validation stopped at.
+  - **Bounds:** one chain, ≤10 hops, one probe run, redirector on 127.0.0.1 only —
+    never a chain that leaves your machine (zero-egress rule).
+  - **Impact:** turns `ssrf: blind` into `ssrf: confirmed/reachability-graded`,
+    and the graded oracle is reportable evidence in its own right.
 - **Impact check:** which gateways does SSRF cross? (metadata → cloud creds; internal
   admin → auth bypass; port scan → recon). Chains get `tags: ssrf` + the end-state tag.
 
