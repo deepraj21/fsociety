@@ -145,10 +145,14 @@ your real one), stops at `--budget` (default 500, hard 2000) and `--timeout`
 
 The ~165-test attack catalog is mapped to **OWASP Top 10:2025**, **WSTG**, **OWASP API
 Top 10**, **OWASP LLM/Agentic Top 10 2025**, and **MITRE CWE Top 25** — covering
-injection (SQLi, SSTI, XSS, XXE, deserialization), auth/gateway bypass, SSRF, file
-access, supply-chain backdoors, business logic & races, LLM/agentic abuse, config/crypto,
-memory safety, HTTP protocol attacks (smuggling, cache poisoning, ReDoS),
-GraphQL/WebSocket, and OAuth/OIDC — see
+injection (SQLi, SSTI incl. error-based blind, XSS, XXE, deserialization, Unicode
+normalization, PHP type juggling, HTML injection), auth/gateway bypass, SSRF, file
+access & upload (incl. zip slip), supply-chain backdoors & known-CVE verification,
+business logic, races & ORM/search-filter leaks, LLM/agentic abuse, config/crypto,
+memory safety, HTTP protocol attacks (smuggling, parser differentials, cache poisoning,
+HTTP/2 CONNECT & DoS, ReDoS), XS-leak side-channel oracles, GraphQL/WebSocket,
+OAuth/OIDC, SAML federation, browser-side staples (DOM clobbering, postMessage
+sandboxing, cookie tossing), and a dangling-DNS/subdomain-takeover recon screen — see
 [`skills/mr-robot/references/`](skills/mr-robot/references/), especially
 [`05-attack-playbook.md`](skills/mr-robot/references/05-attack-playbook.md) for the
 enumeration → exploit → chain workflow.
