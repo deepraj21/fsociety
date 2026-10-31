@@ -65,6 +65,24 @@ importers, PDF/report generators, PDF/URL previewers, `requests.get(user_url)`,
      real webshell; then delete the uploaded file and **verify deletion**.
   3. SVG/HTML upload → stored XSS when rendered (cross-link 03a).
   4. Polyglot (valid image + PHP) bypasses content checks.
+- **Zip slip — archive extraction traversal (CWE-22):** any handler that *extracts*
+  an uploaded archive (zip/tar/jar/war — import bundles, theme/plugin uploads,
+  backup restores) and joins entry names onto a target dir without sanitizing
+  `../` in the name writes outside the extraction root — overwrite of app code or
+  config when the root sits near writable source.
+  - **Detect (source):** `zipfile.extractall(` / `ZipFile.extract(` without name
+    checks (Python), `adm-zip`/`yauzl`/`unzipper` extract with raw `entryName`,
+    Go `archive/zip` + manual path join, Java `ZipInputStream` loops, shell
+    `unzip $upload` — anywhere entry names reach `fs`/`path` unsanitized.
+  - **Prove (bounded, one archive):** craft a zip whose single entry is named
+    `mr-robot-poc-slip/../../<relative-escape>` targeting a **temp dir you own**
+    (never app source, never system paths); run the app's own extraction (local
+    function call or the upload endpoint once) and show the marker file landed
+    *outside* the extraction root. Then delete it and **verify deletion**. One
+    archive, one entry, marker filename only.
+  - **Impact:** write-near-source → `rce`/`config-tamper` when it can reach code
+    or `.env`; `tags: path-traversal`; fix = sanitize entry names, reject `..`
+    and absolute names, extract-then-verify containment ([06](06-remediation.md)).
 
 ## Open redirect — CWE-601 (WSTG-CLNT-04)
 

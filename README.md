@@ -143,7 +143,7 @@ your real one), stops at `--budget` (default 500, hard 2000) and `--timeout`
 | 5 | Post-exploitation: blast radius, privilege paths, detection check (A09), cleanup + verified removal | **user confirmation** |
 | 6 | Kill-chain report + CVSS + coverage ledger + **GO / CONDITIONAL-GO / NO-GO** | — |
 
-The ~160-test attack catalog is mapped to **OWASP Top 10:2025**, **WSTG**, **OWASP API
+The ~165-test attack catalog is mapped to **OWASP Top 10:2025**, **WSTG**, **OWASP API
 Top 10**, **OWASP LLM/Agentic Top 10 2025**, and **MITRE CWE Top 25** — covering
 injection (SQLi, SSTI, XSS, XXE, deserialization), auth/gateway bypass, SSRF, file
 access, supply-chain backdoors, business logic & races, LLM/agentic abuse, config/crypto,

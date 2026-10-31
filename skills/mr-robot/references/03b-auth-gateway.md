@@ -117,6 +117,27 @@ localhost with ONE login + replay — never a credential-stuffing run:
   `Secure`, `SameSite=None` without CSRF story, non-`__Host-` prefix — each widens
   how *easily* the token can be stolen, not just used.
 
+### Cookie tossing — sibling/parent-domain cookie injection (CWE-565)
+
+A cookie set by *any* host under a registrable domain the org controls (or a
+subdomain the attacker compromised — chain from 01 §7 dangling DNS) with
+`Domain=.parent.example` is sent to **every** subdomain; the app then reads the
+attacker's value where it expected its own.
+
+- **Detect (source):** session/auth cookies set **without** the `__Host-` prefix
+  (the prefix forbids `Domain=`, pinning the cookie to the exact host); apps that
+  read a cookie by name with no provenance check; shared parent-domain SSO across
+  unrelated apps (`login.`, `static.`, `dev.` under one `.example`).
+- **Prove (bounded, localhost, own cookies only):** on `127.0.0.1:OTHER_PORT`
+  (standing in for the sibling subdomain) set `session=mr-robot-poc-toss; Domain=localhost`
+  — then show the target origin receives it and that the value *reaches* the app's
+  session read (behavior flip, echo, or log line). ≤3 requests, one cookie, no
+  other names — you are demonstrating precedence, not farming sessions. Clean up.
+- **Impact:** session fixation across subdomains (`account-takeover` when the tossed
+  value becomes the session), CSRF-token pre-seeding, logout-bypass. Fix:
+  `__Host-` prefix everywhere + `SameSite` + never trust domain-wide cookies for
+  auth ([06](06-remediation.md)).
+
 ## PoC discipline
 
 Every proof = harmless marker or observable state difference on **localhost**; record the

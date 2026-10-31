@@ -72,6 +72,56 @@ before recording `status: confirmed`.
 - **Prove:** `"><script>/*mr-robot-poc*/</script>` reflected verbatim → reflected XSS;
   for DOM: show the sink evaluates attacker-controlled `location` data.
 
+## DOM clobbering & postMessage / iframe sandbox (CWE-1321-adjacent · CWE-346 · WSTG-CLNT-01)
+
+Browser-side logic bugs where the *page's own structure* becomes the attack input —
+no script payload ever fires, so XSS filters see nothing.
+
+### DOM clobbering — markup names overwrite JS globals
+
+Anchors/`<form>`/`<img name=…>` in attacker-influenced HTML (comments, markdown,
+stored bio, URL fragments parsed into DOM) *shadow* globals the page's scripts read:
+`document.cookie` → an HTMLFormElement, `window.config` → an anchor, `auth`/`csrf`/
+`isAdmin` clobbered into truthy elements, `formAction`/`action` hijack of login forms.
+
+- **Detect (source):** scripts reading globals that markup can define — bare
+  `config`, `auth`, `csrf`, `window.x` where `x` matches any `name=`/`id=` in
+  reachable HTML; sinks like `el.innerHTML` fed to *checks* (not just rendering);
+  libraries reading `document.cookie`/`location` through clobberable wrappers
+  (older jQuery `$.ajax` `url`, DOMPurify bypass chains via named anchors).
+- **Prove (marker-grade, own page/test account only):** inject
+  `<img name="clobberTarget" mr-robot-poc>` (or a bio/comment containing it) into
+  content *you* control; show the page's script now reads the element instead of
+  the intended value (devtools trace or a visible behavior flip — e.g. a check that
+  failed now passes, a URL that resolved now points elsewhere). ≤4 injections,
+  one clobbered name each, no persistence outside your own record — clean up after.
+- **Impact:** auth/CSRF-check bypass, gadget for XSS chains (a clobbered `innerHTML`
+  sink), config confusion → `auth-bypass` when the clobbered value gates access.
+  Fix: `Object.freeze`/namespace checks, `hasOwnProperty`, never trust bare globals
+  in markup-reachable scopes ([06](06-remediation.md)).
+
+### postMessage & iframe sandbox — the cross-origin door
+
+`postMessage(data, '*')` with no origin allowlist on receive, or an iframe lacking
+`sandbox`/`allow` restrictions, turns any page the victim visits (or any open
+redirect — [03c](03c-ssrf-access-file.md)) into a script that can *talk to* the app.
+
+- **Detect (source):** `postMessage(` calls with `'*'` targetOrigin; `message`
+  listeners that never check `event.origin` (or check it after acting); iframes
+  built without `sandbox`, or with `sandbox="allow-scripts allow-same-origin"`
+  (the combo that defeats the sandbox); `contentWindow` access from attacker-writable
+  frames; `onmessage` handlers acting on `event.data` fields (tokens, actions).
+- **Prove (bounded, local two-origin):** page A at `127.0.0.1:OTHER_PORT` embeds
+  the target origin in an iframe and posts `{type:'mr-robot-poc'}`; observe whether
+  the target's handler *acts* (response received, action visible) despite the
+  foreign origin = confirmed. ≤4 messages, marker payload only, one run — this is
+  the same two-origin loopback recipe as [03o](03o-xs-leaks.md) but for *actions*,
+  not oracles.
+- **Impact:** cross-origin CSRF-grade actions, token/session leakage into the
+  message, sandbox escape → stored XSS grade when scripts run in the parent.
+  `tags: csrf`/`xss` by what the handler actually does; fix = origin allowlist +
+  strict sandbox ([06](06-remediation.md)).
+
 ## Deserialization — CWE-502 (WSTG-INJT-23) · MITRE #15
 
 - **Detect:** `pickle.loads`/`load(`, `yaml.load` (no SafeLoader), `unserialize(`,
@@ -243,6 +293,15 @@ Quick hits here:
   surface; prove with `=1+1` cell, no formula that exfiltrates.
 - **Format-string** (WSTG-INJT-13): `printf(user_input)` in C/Go.
 - **Log injection:** CRLF in logged fields forging audit lines (A09 impact multiplier).
+- **HTML injection** (CWE-79-adjacent, WSTG-CLNT-01): input rendered as *markup but
+  never as script* — `<b>`, `<img src=…>`, `<a href=…>` in comments/bios/search-echo
+  where escaping is partial (tags stripped but attributes survive, or a tag allowlist
+  lets `<img>`/`<a>` through). No JS execution = not XSS, but stored defacement,
+  credential-phishing overlays (`<form>` over the real login), and click-hijack
+  links remain. **Prove:** `<mr-robot-poc>` (a non-HTML tag) or
+  `<a href="https://mr-robot-poc.example">x</a>` rendered *verbatim* in stored/
+  reflected output = the class; the XSS line in the same catalog is what it
+  escalates to when a script sink also exists. ≤4 probes, marker values only.
 
 ## Chaining ideas (Phase 3)
 
