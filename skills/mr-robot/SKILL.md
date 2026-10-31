@@ -195,7 +195,7 @@ severity first:
    [03c](references/03c-ssrf-access-file.md) (SSRF: redirect loops, traversal, upload), [03d](references/03d-supply-chain-backdoors.md),
    [03e](references/03e-business-logic.md) (flows, ORM/search leaks, API abuse), [03f](references/03f-llm-agentic.md),
    [03g](references/03g-config-crypto-misc.md), [03h](references/03h-memory-safety.md),
-   [03i](references/03i-http-protocol.md) (smuggling, CL.0, parser diffs, cache, Host, ReDoS),
+   [03i](references/03i-http-protocol.md) (smuggling, CL.0, parser diffs, cache, H2/DoS, Host, ReDoS),
    [03j](references/03j-graphql-websocket.md), [03k](references/03k-oauth-oidc.md),
    [03l](references/03l-traffic-interception.md) (HAR audit, interception, cookie/token leakage),
    [03m](references/03m-saml-federation.md) (SAML SSO: XSW, unsigned assertions, replay),

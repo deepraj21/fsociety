@@ -72,6 +72,24 @@ agrees.
     # different routing/status between the two = two parsers active → H2.* variants live
     ```
     then the H2.CL/H2.TE nuclei templates against localhost only.
+- **HTTP/2 CONNECT tunneling (Top-10 #9):** a front-end that speaks H2 inbound
+  *and* honors `CONNECT` over it (proxies, API gateways — support is spreading)
+  hands out raw tunnels to whatever `Host:port` the client names — the ancient
+  HTTP/1.1 verb rediscovered on the H2 listener, with internal port-reach as the
+  payoff.
+  - **Probe (bounded, ≤3 requests):** capability first —
+    ```bash
+    curl -s -o /dev/null -w '%{http_code}\n' --http2-prior-knowledge \
+      -X CONNECT -H 'Host: 127.0.0.1:8080' http://localhost:PORT/
+    ```
+    anything but `405`/`501` = CONNECT is parsed → candidate. If repo config shows
+    a proxy/gateway with HTTP/2 (envoy `connect_config`, nginx/haproxy H2), one
+    follow-up: tunnel to ONE loopback port where you run `nc -l` — a banner
+    arriving through the tunnel proves internal reach. ≤3 tunnel targets, banner
+    bytes only, no sustained stream.
+  - **Report:** candidate until an actual internal service answers through it;
+    chain tags `ssrf` (edge-adjacent reach) + recon — see [03c](03c-ssrf-access-file.md)
+    for what internal reach buys.
 - **103 Early Hints response splitting:** a proxy that *forwards* interim `103`
   responses + an app that reflects input into `Link` headers = split a response
   across users without touching `200`.
@@ -211,10 +229,47 @@ single-shot DoS proof, never a flood.
   A hanging request: kill the curl, do not retry. Report as medium (worker exhaustion),
   high if unauthenticated internet-facing surface exists in the deployment story.
 
+## HTTP/2 denial of service — continuation flood & rapid reset (CWE-400/770)
+
+Frame-level resource exhaustion no H/1.1 wordlist produces. Both are *availability*
+findings, both strictly bounded here: we prove the **mechanism and the config gap**,
+never the outage.
+
+- **HPACK continuation flood:** a header block split across an endless run of
+  `CONTINUATION` frames — the server buffers until `END_HEADERS` arrives, so
+  unfinished streams pin worker/connection slots.
+  - **Detect (config, passive):** limits present? `nginx http2_max_concurrent_streams`
+    / `client_header_buffer_size`, envoy `max_concurrent_streams` /
+    `max_headers_count`, LB/WAF in path (CloudFront/Akamai ship mitigations).
+    No limits anywhere = candidate.
+  - **Verify (bounded, capability only):** H2 actually served —
+    `curl -s -o /dev/null -w '%{http_code}\n' --http2-prior-knowledge http://localhost:PORT/`.
+    For a live mechanism check use nuclei's H2/CVE DoS templates **if installed**
+    (02 toolchain), one default-size run against loopback: a split-header sequence
+    getting served (vs immediate `PROTOCOL_ERROR`/`RST_STREAM`) = mechanism live.
+    One run — no iteration ramping, no loops, loopback only, ever.
+- **Rapid reset (CVE-2023-44487 class):** open a stream, cancel it (`RST_STREAM`)
+  at once, repeat *on one connection* — gateways that don't account cancel rates
+  per connection see fan-out multiply into backend load.
+  - **Detect (config, passive):** envoy/haproxy rate settings, nginx conn/reset
+    limits, cloud WAF/CDN in front (their mitigation is the control), HTTP/2 at
+    all (if the listener is H/1.1-only, both H2 DoS families don't apply — say so).
+  - **Verify (bounded):** a single localhost connection with ≤10 stream-cancels via
+    an H2-capable client (nuclei H2 template or an `h2`/`hyper` script if present);
+    the finding is *behavioral acceptance without rate accounting* — all 10
+    accepted, no `GOAWAY` — confirmed in the target's logs afterwards. Never a
+    sustained stream; one sequence, then stop.
+- **Report:** `medium` (`tags: dos`) — high only when this listener is the
+  deployment's single ingress with no upstream mitigation. Evidence = the config
+  gap + one bounded mechanism run. Never report DoS from a flood you actually ran;
+  remediation configs live in [06](06-remediation.md).
+
 ## Probe discipline
 
 Everything here is **localhost only**, capped (≤13 requests total per desync run —
-3 baseline + 5 families × 2 — ≤5 per cache/Host/CRLF probe, 1–2 timed shots for ReDoS),
+3 baseline + 5 families × 2 — ≤5 per cache/Host/CRLF/parser-diff probe, 1–2 timed
+shots for ReDoS, one ≤10-hop redirect-loop chain, ≤3 CONNECT probes + ≤10 stream
+cancels for the H2 families),
 non-state-changing, marker
 values only. Every desync/nc session closed; cache poisons purged and purge verified;
 nothing left behind. Record request+response excerpts — these proofs are
