@@ -93,6 +93,13 @@ Read [references/01-recon.md](references/01-recon.md) and produce an attack-surf
 - AI/LLM components: model calls, tool/function calling, RAG sources, agent loops
   (activates [references/03f-llm-agentic.md](references/03f-llm-agentic.md)).
 - Data stores and secrets handling.
+- Dangling DNS: run `node scripts/dangling-dns.mjs <target-dir>` (source-only, zero
+  network) over the repo — configs/zone files naming third-party providers
+  (herokuapp, github.io, s3, cloudfront, azurewebsites, netlify, vercel …) surface
+  subdomains that may still point at deleted resources (takeover surface, CWE-350);
+  the recipe and report discipline are in
+  [references/01-recon.md](references/01-recon.md) §7 (`--resolve` is the bounded,
+  opt-in DNS confirmation — candidates stay candidates until a claim page is seen).
 
 Select the applicable catalog files from `references/03*.md` based on what you found —
 do not read all of them. A Django API loads 03a+03b+03c+03e; a chat app adds 03f; a C
@@ -149,6 +156,7 @@ Then the orchestrator (runs every applicable scanner, merges everything into one
 ```bash
 bash skills/mr-robot/scripts/scan-all.sh <target-dir>          # passive (default)
 bash skills/mr-robot/scripts/backdoor-scan.sh <target-dir>     # backdoor/implant hunt
+node skills/mr-robot/scripts/dangling-dns.mjs <target-dir>     # dangling-DNS/takeover screen (source-only)
 ```
 
 Outputs land in `<target>/.mr-robot/run-<timestamp>/findings.json` (+ raw scanner
@@ -397,6 +405,6 @@ reading the patch alone.
 `scripts/race-probe.sh` · `scripts/desync-probe.sh` · `scripts/har-audit.mjs` ·
 `scripts/cve-audit.mjs` · `scripts/retest.sh` · `scripts/score.mjs` · `scripts/report.mjs` ·
 `scripts/sarif.mjs` · `scripts/selftest.sh` · `scripts/daemon-sweep.sh` ·
-`scripts/fuzz-lane.mjs` ·
+`scripts/fuzz-lane.mjs` · `scripts/dangling-dns.mjs` ·
 `scripts/wordlist-common-passwords.txt` ·
 `assets/rules/local.yml` · `assets/gitleaks.toml` · `assets/wordlists/{paths,params}.txt`

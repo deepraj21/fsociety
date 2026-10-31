@@ -18,7 +18,7 @@
 #   2 packaging     SKILL.md frontmatter (name, description <=1024) · file map
 #   3 fixture       boots on 127.0.0.1:8766 from the temp copy
 #   4 lanes         live proofs: SQLi · XSS · SSRF · IDOR · transfer(negative)
-#   5 probers       desync-probe exit 0 (direct topology) · race-probe 0|1 · daemon-sweep clean · fuzz-lane crash=1 clean=0
+#   5 probers       desync-probe exit 0 (direct topology) · race-probe 0|1 · daemon-sweep clean · fuzz-lane crash=1 clean=0 · dangling-dns source >=1 candidate
 #   6 scan          scan-all (--live unless --quick) → exit 0
 #   7 findings      findings-v1 schema, unique ids, counts add up
 #   8 har-audit     synthetic HAR fires >=10 rule families · --append merge sound
@@ -92,6 +92,7 @@ if [ "$g2" = ok ]; then
            references/04-report-template.md \
            scripts/scan-all.sh scripts/desync-probe.sh scripts/har-audit.mjs \
            scripts/cve-audit.mjs scripts/daemon-sweep.sh scripts/fuzz-lane.mjs \
+           scripts/dangling-dns.mjs \
            scripts/score.mjs scripts/report.mjs scripts/retest.sh; do
     [ -f "$SKILL_DIR/$f" ] || { g2="missing $f"; break; }
   done
@@ -179,10 +180,29 @@ else
   say "  fuzz skipped (no node)"
   fz_ok=1
 fi
-if [ "$desync_ok" = 1 ] && [ "$race_ok" = 1 ] && [ "$ds_ok" = 1 ] && [ "$fz_ok" = 1 ]; then
-  pass 5 "probers" "desync 0 + race $rrc + sweep clean + fuzz 1/0"
+# dangling-dns: source-mode fixture run must exit 0 and emit valid JSON with
+# >=1 provider candidate (no DNS is ever touched here — source mode is
+# offline by design, so this is deterministic)
+dd_ok=0
+if command -v node >/dev/null 2>&1; then
+  mkdir -p "$WORK/ddns"
+  printf '%s\n' 'static.example.com CNAME docs.example.herokuapp.com' \
+    'cdn.example.com 3600 IN CNAME d111111abcdef8.cloudfront.net' \
+    > "$WORK/ddns/dns.zone"
+  ddrc=0; node "$SCRIPT_DIR/dangling-dns.mjs" "$WORK/ddns" >"$WORK/ddns.json" 2>/dev/null || ddrc=$?
+  if [ "$ddrc" = 0 ] && node -e '
+    const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    process.exit(d.schema === "mr-robot-dangling-dns-v1" && d.mode === "source" && d.candidates.length >= 1 ? 0 : 1);
+  ' "$WORK/ddns.json" 2>/dev/null; then dd_ok=1
+  else say "  dangling-dns exit $ddrc (want 0) or JSON invalid/empty"; fi
 else
-  fail 5 "probers" "desync_ok=$desync_ok race_exit=$rrc ds_ok=$ds_ok (want 0) fz_ok=$fz_ok (crash=1 clean=0)"
+  say "  dangling-dns skipped (no node)"
+  dd_ok=1
+fi
+if [ "$desync_ok" = 1 ] && [ "$race_ok" = 1 ] && [ "$ds_ok" = 1 ] && [ "$fz_ok" = 1 ] && [ "$dd_ok" = 1 ]; then
+  pass 5 "probers" "desync 0 + race $rrc + sweep clean + fuzz 1/0 + ddns 1"
+else
+  fail 5 "probers" "desync_ok=$desync_ok race_exit=$rrc ds_ok=$ds_ok (want 0) fz_ok=$fz_ok (crash=1 clean=0) dd_ok=$dd_ok"
 fi
 
 # ---------------------------------------------------------------- gates 6-9: scan + downstream chain

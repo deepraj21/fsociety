@@ -76,6 +76,38 @@ Note: model calls, tool/function definitions, RAG data sources, agent loops, mem
 For each entry point: *what's the worst a malicious user does with it?* Rank by
 (impact × reachability). This ranking seeds Phase 3's verification order.
 
+## 7. Dangling-DNS / subdomain takeover screen (CWE-350)
+
+A subdomain's DNS still points at a third-party service (Heroku, GitHub Pages,
+S3, CloudFront, Azure, Netlify, Vercel, Shopify, Zendesk …) but the resource
+was deleted — anyone who re-claims it serves *your* domain: cookies, OAuth
+redirects, and SSO all follow. Passive recon can flag the surface from the
+repo itself; the claim check is a one-bit confirmation you run deliberately.
+
+- **Source screen (built-in, zero network):**
+  ```
+  node skills/mr-robot/scripts/dangling-dns.mjs <target-dir> --out /tmp/ddns.json
+  ```
+  Scans configs/zone files/deploy manifests for hostnames referencing known
+  takeovers-prone providers → `candidates[]` (host, provider, file). Always
+  exit 0 in source mode — candidates are leads, not findings.
+- **Resolve check (opt-in, bounded ≤50):** `--resolve` follows each candidate's
+  CNAME; a CNAME landing on a provider suffix whose target no longer resolves
+  (NXDOMAIN) = `dangling` (exit 1). DNS lookups only — it never registers,
+  claims, or contacts the provider.
+- **Confirm by hand, once:** open the hostname in a browser / `curl -sI` — the
+  provider's claim page ("There isn't a GitHub Pages site here", Heroku's
+  "no such app") is the confirmation. That single check is yours to run; the
+  script stops at the DNS evidence.
+- **Report discipline:** dangling DNS is a **candidate until the claim page is
+  seen**; severity follows what the hostname is trusted for (apex/SSO/OAuth
+  redirect host = high; marketing subdomain = low). Never actually claim the
+  resource outside an authorized takeover engagement — flag it, write the fix
+  (delete the record or restore the resource), and link [06](06-remediation.md).
+- **Bounds:** source walk ≤3000 files; resolve ≤50 CNAME lookups, 3s each;
+  no provider API calls, no registration flows, no spraying wordlists at live
+  DNS (use your own resolver, your own domains).
+
 ## Output shape
 
 ```

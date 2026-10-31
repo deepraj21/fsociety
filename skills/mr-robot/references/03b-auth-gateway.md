@@ -34,6 +34,15 @@ Order matters — cheap proofs first:
    register/reset flows; `HaveIBeenPwned` k-anonymity usage.
 5. **Reset flow** (WSTG-ATHN-09): token entropy, expiry, single-use, host-header-poisoned
    reset links, response discloses account existence.
+   - **Host-header poisoning probe (bounded, ≤6 req):** trigger a reset for *your own*
+     test account while overriding the host: `curl -s -D- -X POST
+     http://localhost:PORT/forgot -d 'email=you@test' -H 'Host: mr-robot-poc.example'`
+     (also try `X-Forwarded-Host`). If the emailed/queued link (read it from the
+     local mailbox, queue, or log) embeds the *attacker-chosen* host instead of the
+     canonical one, the reset flow is poisonable → the victim's token lands on a
+     host the attacker controls = **account takeover** (`auth-bypass`, high). Only
+     your own account's mail; marker host only; if the app ignores the override,
+     record the canonical-host behavior as the passing control.
 
 ## 2. Authentication bypass (WSTG-ATHN-04)
 

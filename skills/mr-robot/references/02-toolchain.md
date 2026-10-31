@@ -44,6 +44,7 @@ a crash.
 | **nmap** | bounded localhost port sweep (top-200, in `scan-all.sh --live`) | orchestrator |
 | **daemon-sweep.sh** | loopback daemon Origin/CORS hijack sweep (WS forged-Origin handshake) — 08 | any phase (08) |
 | **fuzz-lane.mjs** | bounded deterministic mutation fuzzing of local builds + PIE/NX/RELRO/canary checksec — 09 | Phase 4 (09) |
+| **dangling-dns.mjs** | source-only dangling-DNS/takeover screen (provider CNAME table; `--resolve` opt-in, ≤50) — 01 §7 | Phase 1 (01) |
 
 These are run **by you, per endpoint, from
 [05-attack-playbook.md](05-attack-playbook.md)** — they need a live target and scope
