@@ -44,6 +44,23 @@ before recording `status: confirmed`.
   ERB string concat; `|safe`, `Markup(`, `{{{ }}}` with dynamic content.
 - **Prove:** probes in order — `{{7*7}}` → `49`; `${7*7}` → `49`; `<%= 7*7 %>` → `49`;
   then stop at expression proof (or harmless `popen('echo mr-robot-poc')` for Jinja).
+- **Error-based blind (output swallowed — the 500 page IS the channel, Top-10 #1):**
+  when rendered output never reaches you, force the *evaluation result into an
+  exception* and read it back:
+  - `{{7*'7'}}` → Jinja/Twig string-repeat (`7777777`) vs engines that error on
+    type — the error *shape* fingerprints engine + sink in one shot;
+  - `{{'mr-robot-poc'|nonexistentfilter}}` → filter errors often echo the evaluated
+    argument — the marker arriving in the traceback proves execution;
+  - `${7/0}` / `{{ 1/0 }}` → arithmetic errors leak engine name, file paths, template
+    line numbers (also recon for 01).
+  - **Prove:** marker visible in a 500 body, error log you can read back, or a
+    time-delay expression (`{{ cycler.__init__.__globals__.os.popen('sleep 1').read() }}`
+    → *duration* proves execution without output) — ≤2 delay probes, no other commands.
+- **Polyglot detection (bounded, ≤8 requests):** chain per-engine markers that
+  *differ in behavior* — `{{7*'7'}}` (Jinja/Twig), `${7*7}` (Velocity/Mako-ish),
+  `<%= 7*7 %>` (ERB), `#{7*7}` (Freemarker) — one request chain fingerprints both
+  the engine and the sink class instead of the classic "SSTI found, engine unknown"
+  dead end. Always stop at expression/marker proof — RCE stays unproven by design.
 
 ## XSS — CWE-79 (WSTG-INJT-01/02, CLNT-01) — MITRE #1
 
@@ -125,6 +142,62 @@ into `Function`. The generic hunt, before any live probe:
 - **Impact:** unauthenticated JSON body → property pollution → gadget = RCE
   (A03/A08 chain); tag `rce-chain`, and pair with [03n](03n-known-cves.md) when
   the polluted dependency also carries a known exploited CVE.
+
+## Unicode normalization — when one component translates and another doesn't (CWE-176/179 · WSTG-INJT-04/ATHN-04)
+
+Security decision on raw bytes, application semantics on normalized text (or vice
+versa) — the gap is the bug. "Lost in Translation", Top-10 #4: WAF and denylist
+regexes run *before* the framework's NFKC pass, so the filter sees something else
+than the sink does.
+
+- **Detect:** identity/allow/deny decisions on user strings where stages normalize
+  differently — username/email uniqueness, path & extension checks, URL denylists,
+  WAF rules over URLs/params; anything regexing `../`, `.php`, `script` on *input*
+  bytes. Suspect harder where the stack mixes languages (nginx + app, CDN + origin,
+  JS validates + server decides).
+- **Bypass families:**
+  - **Fullwidth/mixed-width:** `ｓｃｒｉｐｔ`, `．ｐｈｐ` (U+FF01–FF5E) — NFKC → ASCII *after*
+    the regex ran; `%ef%bc%8f` → `/` after path checks.
+  - **Homoglyph / mixed-script:** `аdmin` (Cyrillic а), `раypаl` — distinct to the
+    comparison, identical-looking to the user; also confusable *hostname* twins in
+    redirects/callback allowlists (cross-link 03k).
+  - **Double/alternate encoding:** `%252e%252e%252f`, overlong UTF-8, `..;/` — each
+    decode hop is a potential stage disagreement (cross-link 03i parser rows).
+  - **Bidi/zero-width:** RLO/U+202E reversing `exe‮txt` into a filename that *displays*
+    as `exe.txt`; ZWSP splitting an otherwise-blocked word past keyword filters.
+- **Prove (marker-grade, own identifiers only):** register or resolve an NFKC twin of
+  your *own* account/parameter → both land on one record = normalization gap; or
+  smuggle a `../`-equivalent into one *harmless* read path carrying `mr-robot-poc`.
+  ≤12 requests with a ≤6-pair probe table — no spraying lookalikes at other users'
+  identities (that's enumeration, 03b/03o).
+- **Impact:** denylist bypass → stored XSS/LFI, twin-identity auth confusion
+  (`auth-bypass` tag when it reaches a login/verify), homoglyph callback domains
+  → token theft (03k). Fix: normalize **before** compare (NFKC + script-confusable
+  fold), `===` on the normalized form (06 has the pattern).
+
+## PHP type juggling — loose comparison bypasses (CWE-697)
+
+PHP's `==` coerces: comparing attacker input against a secret/hash/signature
+doesn't mean what the author thinks it means. The oldest PHP-only bypass class —
+still live in payment callbacks, legacy auth, and any `md5(...) == $x`.
+
+- **Detect:** `==`/`!=` where `===` was meant (`$_GET['sig'] == $expected`), loose
+  compare of *hashes* (`md5($input) == $stored`), `strcmp($input,$secret) == 0`
+  (array param → `NULL == 0` → true), `switch`/`in_array`/`array_search` without
+  strict flag, truthiness gates on input (`"0"`, `"false"`, `""` are falsy —
+  `if (!$token)` skips), `empty()` on user values.
+- **Prove (marker-grade, own test accounts only):**
+  - **magic hash:** two *known* `0e\d+` strings collide under loose compare
+    (`md5('240610708') == md5('QNKCDZO')`) — proving the comparison is loose needs
+    no target secret at all;
+  - **type confusion:** `?param[]=x` where a string was expected → error/behavior
+    shift proves `==`/string-op on an array;
+  - **gate proof:** submit the juggling value at the check → accepted where a
+    hash/token/amount was verified = the finding (`auth-bypass`, `payment-tamper`
+    for money paths, cross-link [03b](03b-auth-gateway.md) §2).
+- **Impact:** auth bypass, signature/callback forgery, amount confusion; severity
+  = how close the loose compare sits to a trust boundary. Fix: `===`,
+  `hash_equals()` for secrets, strict `in_array` — [06](06-remediation.md).
 
 ## HTTP-layer injection (WSTG-INJT-03/04/15/16/17)
 

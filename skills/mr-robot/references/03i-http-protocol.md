@@ -90,6 +90,36 @@ agrees.
     response instead of its own. Never run this against origins you don't own
     (it hijacks *other users'* requests by design).
 
+## Parser differentials — interpretation becomes the vulnerability (CWE-444/178)
+
+Two components read the *same bytes* differently and the security decision is made
+by whichever one loses the argument (Top-10 #10, joernchen's language/framework
+case studies). Smuggling above is the HTTP instance — the class is far wider, and
+it only takes a hop: any place where ≥2 parsers touch input is a candidate.
+
+- **Detect (Phase 1):** named pairs in the repo's config/code — nginx `merge_slashes`/
+  `decode_escapes` vs app router, CDN path normalization vs origin, WAF regex vs
+  framework decode order, `URL()` (WHATWG) in JS vs `urllib.parse`/`net/url` server-side,
+  JSON libs that disagree on duplicate keys or number precision.
+- **Classic pairs to probe (≤5 requests each, marker payloads only):**
+  - **Path:** `/%2e%2e/`, `//admin`, `/./x`, `..;/`, backslash `..\`, trailing `.`/`%20`
+    — front-end says `/safe/read`, backend resolves elsewhere (cross-link 03c).
+  - **Identity/host:** punycode vs displayed hostname in redirects & rendered links —
+    [03o](03o-xs-leaks.md) §2 is the *leak* half, here it's the spoof half (03k too).
+  - **Param/JSON:** duplicate keys (`{"id":1,"id":2}` — validator reads first, app
+    reads last), `id=1` vs `id[]`, content-type sniffing (`text/json` vs `application/json`
+    accept/deny), charset layers (`UTF-7`, BOM) shifting parse boundaries.
+  - **XML vs HTML:** namespace/entity handling disagreement feeding XXE (03a) —
+    one parser resolves entities the other ignores.
+  - **HTTP layer:** CL/TE/Host — already covered by the smuggling sections above.
+- **Prove:** capture *both readings of one request*: the app's log line or response
+  (what it did) vs the front-end's (what it admitted) — verbatim excerpts in the
+  report. The disagreement itself is the candidate; severity comes from the worst
+  downstream interpretation (traversal, authz skip, cache key mismatch → 03i cache).
+- **Impact:** filter bypass → XSS/LFI, routing bypass → unprotected routes, the
+  desync class when the parsers disagree on *framing*; always chain to the concrete
+  sink rather than reporting "differential" alone.
+
 ## Web cache poisoning / deception — WSTG-ATHO-11 (CWE-349)
 
 Unkeyed input (headers the cache ignores when hashing) poisons a response other
